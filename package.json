@@ -1,0 +1,31 @@
+{
+  "name": "clippy",
+  "version": "0.1.0",
+  "description": "Automatic game recording and clipping on top of OBS Studio",
+  "author": "jss",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "stage:obs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-obs.ps1",
+    "check": "node --check src/main.js && node --check src/obs.js && node --check src/preload.js && node --check src/renderer.js",
+    "dist": "npm run stage:obs && electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "obs-websocket-js": "^5.0.6"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "io.clippy.desktop",
+    "productName": "jss clips",
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "extraResources": [{ "from": "vendor/obs-studio", "to": "obs-studio" }],
+    "asar": true,
+    "win": { "target": ["nsis", "portable"] },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "artifactName": "jss-clips-setup-${version}-${arch}.${ext}" },
+    "portable": { "artifactName": "jss-clips-portable-${version}-${arch}.${ext}" }
+  }
+}

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
+  <meta name="viewport" content="width=device-width">
+  <meta name="theme-color" content="#101113">
+  <title>jss/clips</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span translate="no"><strong>jss</strong><i>/</i>clips</span></div>
+      <nav aria-label="Settings">
+        <button class="tab active" data-tab="library"><span class="nav-icon" aria-hidden="true">▦</span>Library</button>
+        <button class="tab" data-tab="games"><span class="nav-icon" aria-hidden="true">⌁</span>Games</button>
+      </nav>
+      <button class="tab sidebar-foot" data-tab="settings"><span class="nav-icon" aria-hidden="true">⚙</span><span>Settings</span><i id="connection-dot" class="status-dot" aria-label="OBS connection status"></i><span id="connection" class="sr-only">OBS offline</span></button>
+    </aside>
+
+    <main id="content">
+      <header class="topbar">
+        <div><h1>Recorder</h1><p id="footer-status" aria-live="polite">Monitoring</p></div>
+        <div class="top-actions"><button id="open-folder" class="quiet">Open recordings</button><button id="save">Save changes</button></div>
+      </header>
+
+      <section class="recorder" aria-labelledby="status">
+        <div class="record-state">
+          <span id="record-indicator" class="record-indicator" aria-hidden="true"></span>
+          <div><span class="kicker">SESSION</span><h2 id="status">Waiting for a game</h2><p id="detail">Monitoring configured games</p></div>
+        </div>
+        <div class="actions"><button id="record" class="secondary">Start recording</button><button id="clip" class="primary">Save clip <kbd id="clip-key">Ctrl Shift F10</kbd></button></div>
+      </section>
+
+      <div id="error" class="error hidden" role="status" aria-live="polite"></div>
+
+      <section id="library" class="panel active" aria-labelledby="library-title">
+        <div class="section-head"><div><h2 id="library-title">Today</h2><p id="library-summary">Recordings from this session.</p></div><button id="library-folder" class="secondary">Show in folder</button></div>
+        <div class="library-group"><div class="group-title"><h3>Replays</h3><span id="replay-count">0</span></div><div id="replay-list" class="recording-list"></div></div>
+        <div class="library-group"><div class="group-title"><h3>Full recordings</h3><span id="recording-count">0</span></div><div id="recording-list" class="recording-list"></div></div>
+      </section>
+
+      <section id="games" class="panel" aria-labelledby="games-title">
+        <div class="section-head"><div><h2 id="games-title">Games</h2><p>Recording starts while any game in this list is running.</p></div><button id="scan" class="secondary">Add running game</button></div>
+        <div id="game-list" class="game-list"></div>
+        <div id="process-picker" class="picker hidden"></div>
+      </section>
+
+      <section id="settings" class="panel" aria-labelledby="settings-title">
+        <div class="section-head"><div><h2 id="settings-title">Settings</h2><p>Capture, storage, audio, and OBS.</p></div><button id="open-obs" class="secondary">Open OBS</button></div>
+        <h3 class="settings-heading">Capture</h3>
+        <div class="settings-card form-grid">
+          <label for="clip-length">Clip length<input id="clip-length" name="clipLengthSeconds" type="number" min="5" max="3600" inputmode="numeric"><small>Seconds</small></label>
+          <label for="delay">Stop delay<input id="delay" name="stopDelaySeconds" type="number" min="0" inputmode="numeric"><small>Seconds</small></label>
+          <label class="wide" for="hotkey">Clip shortcut<input id="hotkey" name="clipHotkey" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <div class="toggle-list">
+          <label class="toggle" for="auto"><span><strong>Automatic recording</strong><small>Start when a selected game is detected.</small></span><input id="auto" name="autoRecord" type="checkbox"></label>
+          <label class="toggle" for="startup"><span><strong>Launch in background</strong><small>Start jss/clips and OBS when you sign in.</small></span><input id="startup" name="startWithWindows" type="checkbox"></label>
+        </div>
+
+        <h3 class="settings-heading">Storage</h3>
+        <div class="settings-card form-grid">
+          <label class="wide" for="folder">Storage folder<span class="compound"><input id="folder" name="recordingsFolder" autocomplete="off"><button id="browse" class="secondary">Browse</button></span></label>
+          <label for="days">Keep recordings for<input id="days" name="retentionDays" type="number" min="1" max="365" inputmode="numeric"><small>Days</small></label>
+        </div>
+
+        <h3 class="settings-heading">Audio</h3>
+        <div class="settings-card">
+          <label for="audio-exes">Allowed applications</label>
+          <textarea id="audio-exes" name="audioExecutables" rows="5" autocomplete="off" spellcheck="false" placeholder="Discord.exe&#10;game.exe"></textarea>
+          <p class="field-help">One executable per line. The active game is always included. Clippy temporarily mutes global Desktop Audio while recording.</p>
+        </div>
+        <div class="callout"><strong>Application isolation</strong><span>Only the active game and this allow-list are routed into the recording. Source routing stays editable in OBS.</span></div>
+
+        <h3 class="settings-heading">OBS connection</h3>
+        <div class="settings-card form-grid">
+          <label for="port">WebSocket port<input id="port" name="obsPort" type="number" inputmode="numeric"></label>
+          <label for="password">WebSocket password<input id="password" name="obsPassword" type="password" autocomplete="off"></label>
+        </div>
+        <div class="obs-row"><div><strong>Recording engine</strong><p>Encoder, resolution, frame rate, tracks, and scenes.</p></div><button id="connect">Reconnect</button></div>
+      </section>
+    </main>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
