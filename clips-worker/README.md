@@ -1,12 +1,12 @@
 # clips.jss.fi front door
 
-This Worker owns the shared project hostname and routes each path to a focused service:
+This is the only Worker required for current Clips builds. It owns the shared project hostname and accesses both R2 buckets directly:
 
-- `/cdn/` forwards to the update Worker.
-- `/telemetry/` forwards to the opt-in telemetry Worker.
+- `/cdn/` serves application updates.
+- `/telemetry/` accepts opt-in telemetry.
 - `/app/` is reserved for the future project site.
 
-The legacy `cdn.clips.jss.fi` and `telemetry.clips.jss.fi` custom domains remain attached directly to their Workers so already-installed builds continue working without depending on redirect behavior.
+The legacy hostnames are attached to this Worker and permanently redirect to their corresponding paths on the primary hostname. The old standalone Worker source remains under `legacy/` only as a rollback reference.
 
 ```powershell
 npm install
@@ -15,4 +15,6 @@ npm run check
 npm run deploy
 ```
 
-Worker names, domains, and service targets are generated into the ignored `wrangler.jsonc` from the repository-root `.env`; see `.env.example`.
+Publish update artifacts from the repository root with `powershell -NoProfile -ExecutionPolicy Bypass -File clips-worker\scripts\publish.ps1`. Nightly is the default; use `-Channel stable` or `-Channel both` when promoting a stable release.
+
+The Worker name, domain, and R2 bindings are generated into the ignored `wrangler.jsonc` from the repository-root `.env`; see `.env.example`.

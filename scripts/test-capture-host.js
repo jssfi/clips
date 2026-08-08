@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, spawnSync, execFileSync } = require('node:child_process');
 
 const root = path.join(__dirname, '..');
 const runtimeRoot = path.join(root, 'vendor');
@@ -119,6 +119,15 @@ async function main() {
   const replay = files.find(file => /^Replay .+\.mkv$/i.test(file.name));
   assert.ok(recording?.size > 1000, 'The libobs recording output was not created.');
   assert.ok(replay?.size > 1000, 'The libobs replay-buffer output was not created.');
+  const probe = spawnSync(path.join(runtimeRoot, 'ffmpeg', 'ffmpeg.exe'), [
+    '-hide_banner', '-i', path.join(outputDirectory, recording.name), '-t', '0', '-map', '0:a?', '-f', 'null', '-'
+  ], { windowsHide: true, encoding: 'utf8' });
+  assert.equal(probe.status, 0, probe.stderr || 'FFmpeg could not inspect the native recording.');
+  const inputDescription = probe.stderr.split('Stream mapping:')[0];
+  const audioStreams = [...inputDescription.matchAll(/^\s*Stream #0:\d+.*Audio:/gm)];
+  assert.equal(audioStreams.length, 2, 'The recording must contain a Combined track and an application stem.');
+  assert.match(inputDescription, /^\s*title\s*:\s*Combined\s*$/m);
+  assert.match(inputDescription, /^\s*title\s*:\s*clips-capture-test\.exe\s*$/m);
   console.log(`Native capture host recorded ${recording.name} and ${replay.name} without obs64.exe.`);
 }
 

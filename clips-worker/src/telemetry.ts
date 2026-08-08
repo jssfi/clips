@@ -50,7 +50,10 @@ function validate(input: unknown): VersionEvent | null {
   if (value.mode !== 'version' && value.mode !== 'diagnostics') return null;
   if (value.event !== 'startup' && value.event !== 'error') return null;
   if (value.event === 'error' && value.mode !== 'diagnostics') return null;
-  if (!VERSION.test(String(value.appVersion || '')) || !text(value.runtimeVersion, 100)) return null;
+  if (typeof value.runtimeVersion !== 'string'
+    && (typeof value.runtimeVersion !== 'number' || !Number.isFinite(value.runtimeVersion))) return null;
+  const runtimeVersion = String(value.runtimeVersion);
+  if (!VERSION.test(String(value.appVersion || '')) || !text(runtimeVersion, 100)) return null;
   if (!text(value.timestamp, 40) || !Number.isFinite(Date.parse(String(value.timestamp)))) return null;
   const allowed = new Set(['schemaVersion', 'installationId', 'mode', 'event', 'timestamp', 'appVersion', 'runtimeVersion']);
   if (value.mode === 'diagnostics') allowed.add('system');
@@ -68,11 +71,10 @@ function validate(input: unknown): VersionEvent | null {
     if (!error || !text(error.message, 1000) || typeof error.log !== 'string' || new TextEncoder().encode(error.log).length > 48 * 1024) return null;
     if (Object.keys(error).some(key => !['message', 'log'].includes(key))) return null;
   }
-  return value as VersionEvent;
+  return { ...value, runtimeVersion } as VersionEvent;
 }
 
-export default {
-  async fetch(request, env): Promise<Response> {
+async function serveTelemetry(request: Request, telemetry: R2Bucket): Promise<Response> {
     const url = new URL(request.url);
     if (request.method !== 'POST' || url.pathname !== '/v1/events') return json({ error: 'Not found' }, 404);
     if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return json({ error: 'JSON required' }, 415);
@@ -96,16 +98,23 @@ export default {
       ...(event.system ? { system: event.system } : {}),
       receivedAt
     });
-    await env.TELEMETRY.put(`installations/${event.installationId}.json`, current, {
+    await telemetry.put(`installations/${event.installationId}.json`, current, {
       httpMetadata: { contentType: 'application/json' },
       customMetadata: { appVersion: event.appVersion, mode: event.mode, receivedAt }
     });
     if (event.event === 'error') {
       const day = receivedAt.slice(0, 10);
-      await env.TELEMETRY.put(`errors/${day}/${event.installationId}/${crypto.randomUUID()}.json`, JSON.stringify({ ...event, receivedAt }), {
+      await telemetry.put(`errors/${day}/${event.installationId}/${crypto.randomUUID()}.json`, JSON.stringify({ ...event, receivedAt }), {
         httpMetadata: { contentType: 'application/json' }
       });
     }
     return json({ accepted: true }, 202);
+}
+
+export { serveTelemetry };
+
+export default {
+  fetch(request, env): Promise<Response> {
+    return serveTelemetry(request, env.TELEMETRY);
   }
 } satisfies ExportedHandler<Env>;

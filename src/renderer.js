@@ -9,6 +9,9 @@ let mpvCurrentTime = 0;
 let mpvPaused = true;
 let mpvPollTimer = null;
 let editorMode = "trim";
+let mixingPath = "";
+let mixerLoadedPath = "";
+let liveMixTimer = null;
 const playerIcons = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
@@ -159,11 +162,12 @@ function render(s, fill = false) {
     idle: s.update?.configured ? "You’re up to date." : "Nightly updates are off.",
   };
   $("about-update-status").textContent = updateStatus[s.update?.status] || updateStatus.idle;
-  $("check-updates").disabled = !s.settings.nightlyUpdates || ["checking", "downloading"].includes(s.update?.status);
+  $("check-updates").disabled = ["checking", "downloading", "preparing"].includes(s.update?.status);
   $("telemetry-mode").disabled = !s.telemetry?.configured;
   $("telemetry-status").textContent = s.telemetry?.configured
     ? "The choice applies immediately and can be changed at any time."
     : "Telemetry is not configured in this build; no data can be sent.";
+  renderChangelog(s.app?.changelog || []);
   const online = s.obs.connected;
   $("connection").textContent = online ? "Capture engine ready" : "Capture engine offline";
   $("connection-dot").classList.toggle("online", online);
@@ -212,7 +216,7 @@ function render(s, fill = false) {
           : new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 }).format(recording.bytes / 1048576);
         const favoriteLabel = recording.favorite ? "Remove from favorites" : "Add to favorites";
         const selected = selectedRecordingPaths.has(recording.path);
-        return `<article class="recording-card${recording.favorite ? " favorite" : ""}${selected ? " selected" : ""}"><button class="recording-open" data-recording-path="${escapeHtml(recording.path)}" data-recording-name="${escapeHtml(recording.name)}" aria-label="Play ${escapeHtml(recording.name)}"><span class="recording-preview"><img class="recording-thumbnail" data-thumbnail-path="${escapeHtml(recording.path)}" alt=""><i class="recording-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i><i class="recording-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i></span><span class="recording-meta"><strong title="${escapeHtml(recording.name)}">${escapeHtml(recording.name)}</strong><span>${time} &middot; ${size}</span></span></button><button class="recording-select" data-select-path="${escapeHtml(recording.path)}" aria-pressed="${selected}" aria-label="${selected ? "Deselect" : "Select"} ${escapeHtml(recording.name)}" title="${selected ? "Deselect" : "Select"}"><i></i></button><button class="recording-favorite" data-favorite-path="${escapeHtml(recording.path)}" data-favorite="${recording.favorite ? "true" : "false"}" aria-label="${favoriteLabel}" title="${favoriteLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button><div class="recording-actions"><button class="recording-delete" data-delete-path="${escapeHtml(recording.path)}" data-delete-name="${escapeHtml(recording.name)}" aria-label="Delete ${escapeHtml(recording.name)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button><button class="recording-edit" data-editing-path="${escapeHtml(recording.path)}" data-editing-name="${escapeHtml(recording.name)}" aria-label="Trim ${escapeHtml(recording.name)}" title="Trim"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="m8.7 8.3 10.3 6.2M8.7 15.7 19 9.5"/></svg></button></div></article>`;
+        return `<article class="recording-card${recording.favorite ? " favorite" : ""}${selected ? " selected" : ""}"><button class="recording-open" data-recording-path="${escapeHtml(recording.path)}" data-recording-name="${escapeHtml(recording.name)}" aria-label="Play ${escapeHtml(recording.name)}"><span class="recording-preview"><img class="recording-thumbnail" data-thumbnail-path="${escapeHtml(recording.path)}" alt=""><i class="recording-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i><i class="recording-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i></span><span class="recording-meta"><strong title="${escapeHtml(recording.name)}">${escapeHtml(recording.name)}</strong><span>${time} &middot; ${size}</span></span></button><button class="recording-select" data-select-path="${escapeHtml(recording.path)}" aria-pressed="${selected}" aria-label="${selected ? "Deselect" : "Select"} ${escapeHtml(recording.name)}" title="${selected ? "Deselect" : "Select"}"><i></i></button><button class="recording-favorite" data-favorite-path="${escapeHtml(recording.path)}" data-favorite="${recording.favorite ? "true" : "false"}" aria-label="${favoriteLabel}" title="${favoriteLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button><div class="recording-actions"><button class="recording-delete" data-delete-path="${escapeHtml(recording.path)}" data-delete-name="${escapeHtml(recording.name)}" aria-label="Delete ${escapeHtml(recording.name)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></article>`;
       }).join("")
     : `<div class="empty compact"><div><strong>${emptyTitle}</strong><span>${emptyDetail}</span></div></div>`;
   $("replay-count").textContent = replays.length;
@@ -279,6 +283,31 @@ function render(s, fill = false) {
     $("telemetry-mode").value = ["diagnostics", "version", "off"].includes(s.settings.telemetryMode) ? s.settings.telemetryMode : "off";
     updateStorageVisibility();
   }
+}
+
+function renderChangelog(releases) {
+  const container = $("changelog");
+  if (container.dataset.rendered === JSON.stringify(releases)) return;
+  container.dataset.rendered = JSON.stringify(releases);
+  container.replaceChildren(...releases.map(release => {
+    const article = document.createElement("article");
+    article.className = "changelog-release";
+    const heading = document.createElement("div");
+    heading.className = "changelog-heading";
+    const version = document.createElement("strong");
+    version.textContent = `v${release.version}`;
+    const title = document.createElement("span");
+    title.textContent = release.title;
+    heading.append(version, title);
+    const list = document.createElement("ul");
+    for (const change of release.changes || []) {
+      const item = document.createElement("li");
+      item.textContent = change;
+      list.append(item);
+    }
+    article.append(heading, list);
+    return article;
+  }));
 }
 function loadRecordingThumbnails() {
   thumbnailObserver.disconnect();
@@ -579,23 +608,146 @@ const openRecording = async (event) => {
     mode: "view",
   });
 };
-const openEditor = async (event) => {
-  const button = event.target.closest("[data-editing-path]");
-  if (!button) return;
-  await openEmbeddedRecording({
-    filePath: button.dataset.editingPath,
-    name: button.dataset.editingName,
-    mode: "trim",
-  });
-};
+function returnToViewer() {
+  editorMode = "view";
+  mixingPath = "";
+  $("editor").classList.add("viewer-mode");
+  $("editor").classList.remove("editing-mode", "mixer-mode", "trim-mode");
+  $("editor").querySelector(".dialog-eyebrow").textContent = "Recording";
+  $("editor-title").textContent = "Play recording";
+  $("editor-status").textContent = "";
+  updateEditorPanes();
+  updateTimeline();
+  syncMpvBounds();
+}
+function updateEditorPanes() {
+  const mixing = editorMode === "mix";
+  const trimming = editorMode === "trim";
+  $("inline-mixer").hidden = !mixing;
+  $("trim-editor-pane").hidden = !trimming;
+  $("choose-volume-mix").classList.toggle("active", mixing);
+  $("choose-volume-mix").setAttribute("aria-selected", String(mixing));
+  $("choose-trim").classList.toggle("active", trimming);
+  $("choose-trim").setAttribute("aria-selected", String(trimming));
+}
+function enterTrimEditor() {
+  editorMode = "trim";
+  $("editor").classList.remove("viewer-mode", "mixer-mode");
+  $("editor").classList.add("editing-mode", "trim-mode");
+  $("editor").querySelector(".dialog-eyebrow").textContent = "Clip editor";
+  $("editor-title").textContent = "Edit recording";
+  $("editor-status").textContent = "Drag either edge to choose the part you want to keep.";
+  updateEditorPanes();
+  updateTimeline();
+  syncMpvBounds();
+}
+async function enterVolumeMixer() {
+  editorMode = "mix";
+  mixingPath = editingPath;
+  $("editor").classList.remove("viewer-mode", "trim-mode");
+  $("editor").classList.add("editing-mode", "mixer-mode");
+  $("editor").querySelector(".dialog-eyebrow").textContent = "Clip editor";
+  $("editor-title").textContent = "Edit recording";
+  updateEditorPanes();
+  $("save-mix-copy").disabled = false;
+  $("save-mix-replace").disabled = false;
+  updateTimeline();
+  syncMpvBounds();
+  if (mixerLoadedPath === mixingPath && $("mixer-tracks").children.length) {
+    queueLiveAudioMix();
+    return;
+  }
+  $("mixer-tracks").innerHTML = '<div class="muted">Reading audio tracks…</div>';
+  $("mixer-status").textContent = "";
+  try {
+    const tracks = await window.clips.getAudioTracks(mixingPath);
+    if (!tracks.length) throw new Error("This clip has no audio tracks.");
+    const hasCombinedTrack = tracks.length > 1 && tracks[0].kind === "combined";
+    const editableTracks = hasCombinedTrack ? tracks.slice(1) : tracks;
+    if (hasCombinedTrack) $("mixer-status").textContent = "The Combined playback track will be rebuilt from these sources.";
+    $("mixer-tracks").innerHTML = editableTracks.map(track => `<div class="mixer-track"><div><strong>${escapeHtml(track.label.replace(/\.exe$/i, ""))}</strong><small>${escapeHtml(track.codec.toUpperCase())} · Track ${track.index + 1}</small></div><button class="mixer-mute button outline" type="button" aria-pressed="false">Mute</button><input type="range" min="0" max="200" value="100" step="1" data-track-index="${track.index}" aria-label="${escapeHtml(track.label)} volume"><output>100%</output></div>`).join("");
+    mixerLoadedPath = mixingPath;
+    queueLiveAudioMix();
+  } catch (error) {
+    mixerLoadedPath = "";
+    $("mixer-tracks").innerHTML = "";
+    $("mixer-status").textContent = error.message;
+    $("save-mix-copy").disabled = true;
+    $("save-mix-replace").disabled = true;
+  }
+}
+$("open-editor").onclick = enterVolumeMixer;
+$("choose-trim").onclick = enterTrimEditor;
+$("choose-volume-mix").onclick = enterVolumeMixer;
+function mixerAdjustments() {
+  return [...$("mixer-tracks").querySelectorAll('input[type="range"]')]
+    .map(input => ({ index: Number(input.dataset.trackIndex), volume: Number(input.value) / 100 }));
+}
+function queueLiveAudioMix() {
+  clearTimeout(liveMixTimer);
+  liveMixTimer = setTimeout(() => {
+    liveMixTimer = null;
+    const adjustments = mixerAdjustments();
+    if (!adjustments.length || !$("editor").open) return;
+    window.clips.setMpvAudioMix(adjustments).catch(error => {
+      $("mixer-status").textContent = error.message;
+    });
+  }, 40);
+}
+$("mixer-tracks").addEventListener("input", event => {
+  if (!event.target.matches('input[type="range"]')) return;
+  event.target.closest(".mixer-track").querySelector("output").textContent = `${event.target.value}%`;
+  const mute = event.target.closest(".mixer-track").querySelector(".mixer-mute");
+  mute.setAttribute("aria-pressed", String(event.target.value === "0"));
+  mute.textContent = event.target.value === "0" ? "Unmute" : "Mute";
+  queueLiveAudioMix();
+});
+$("mixer-tracks").addEventListener("click", event => {
+  const mute = event.target.closest(".mixer-mute");
+  if (!mute) return;
+  const slider = mute.closest(".mixer-track").querySelector('input[type="range"]');
+  if (slider.value === "0") slider.value = slider.dataset.previousVolume || "100";
+  else { slider.dataset.previousVolume = slider.value; slider.value = "0"; }
+  slider.dispatchEvent(new Event("input", { bubbles: true }));
+});
+async function saveVolumeMix(replace) {
+  const buttons = [$("save-mix-copy"), $("save-mix-replace")];
+  buttons.forEach(button => { button.disabled = true; });
+  $("mixer-progress").classList.remove("hidden");
+  $("mixer-progress").querySelector("span").textContent = "Mixing audio…";
+  $("mixer-status").textContent = replace ? "Saving changes to the clip…" : "Creating a new mixed clip…";
+  try {
+    const adjustments = mixerAdjustments();
+    const result = await window.clips.mixRecordingAudio(mixingPath, adjustments, replace);
+    render(result.state);
+    $("mixer-status").textContent = `Saved ${result.outputPath.split(/[\\/]/).pop()}`;
+    setTimeout(() => $("editor").close(), 650);
+  } catch (error) {
+    $("mixer-status").textContent = error.message;
+    buttons.forEach(button => { button.disabled = false; });
+    $("mixer-progress").classList.add("hidden");
+  }
+}
+$("save-mix-copy").onclick = () => saveVolumeMix(false);
+$("save-mix-replace").onclick = () => saveVolumeMix(true);
+window.clips.onAudioMixProgress(progress => {
+  if (!$("editor").open || editorMode !== "mix") return;
+  $("mixer-progress").setAttribute("aria-valuenow", progress.complete ? "100" : "50");
+  $("mixer-progress").querySelector("i").style.width = progress.complete ? "100%" : "50%";
+  $("mixer-progress").querySelector("span").textContent = progress.complete ? "Finalizing…" : "Mixing audio…";
+});
 async function openEmbeddedRecording({ filePath, name, mode }) {
   if ($("editor").open) return;
   editorMode = mode;
   editingPath = filePath;
   $("editor").classList.toggle("viewer-mode", mode === "view");
-  $("editor").querySelector(".dialog-eyebrow").textContent = mode === "view" ? "" : "Video editor";
-  $("editor-title").textContent = mode === "view" ? "Play recording" : "Trim recording";
+  $("editor").classList.toggle("editing-mode", mode !== "view");
+  $("editor").classList.toggle("trim-mode", mode === "trim");
+  $("editor").classList.remove("mixer-mode");
+  $("editor").querySelector(".dialog-eyebrow").textContent = mode === "view" ? "Recording" : "Clip editor";
+  $("editor-title").textContent = mode === "view" ? "Play recording" : "Edit recording";
   $("editor-name").textContent = name;
+  updateEditorPanes();
   trimStart = 0;
   trimEnd = 0;
   mpvDuration = 0;
@@ -647,9 +799,9 @@ function updateTimeline() {
   $("trim-selection").style.width = `${endPercent - startPercent}%`;
   if (document.activeElement !== $("trim-start-time")) $("trim-start-time").value = formatTimestamp(trimStart);
   if (document.activeElement !== $("trim-end-time")) $("trim-end-time").value = formatTimestamp(trimEnd);
-  $("selection-duration").textContent = editorMode === "view"
-    ? `${shortTimestamp(duration)} total`
-    : `${shortTimestamp(trimEnd - trimStart)} selected`;
+  $("selection-duration").textContent = editorMode === "trim"
+    ? `${shortTimestamp(trimEnd - trimStart)} selected`
+    : `${shortTimestamp(duration)} total`;
   updatePlayhead();
 }
 function updatePlayhead() {
@@ -678,7 +830,7 @@ function setTimeFromPointer(event, handle = "") {
     trimEnd = Math.max(time, trimStart + minimum);
     seekMpv(trimEnd);
   } else {
-    seekMpv(Math.max(trimStart, Math.min(trimEnd, time)));
+    seekMpv(editorMode === "trim" ? Math.max(trimStart, Math.min(trimEnd, time)) : time);
   }
   updateTimeline();
 }
@@ -706,7 +858,7 @@ $("trim-timeline").addEventListener("pointermove", (event) => {
 $("trim-timeline").addEventListener("pointerup", () => { draggingPlayhead = false; });
 $("trim-timeline").addEventListener("pointercancel", () => { draggingPlayhead = false; });
 const togglePlayback = async () => {
-  if (mpvPaused && (mpvCurrentTime < trimStart || mpvCurrentTime >= trimEnd)) await seekMpv(trimStart);
+  if (editorMode === "trim" && mpvPaused && (mpvCurrentTime < trimStart || mpvCurrentTime >= trimEnd)) await seekMpv(trimStart);
   await window.clips.toggleMpv();
   mpvPaused = !mpvPaused;
   updatePlayhead();
@@ -758,7 +910,7 @@ async function refreshMpvStatus() {
     mpvDuration = status.duration || mpvDuration;
     mpvCurrentTime = status.currentTime;
     mpvPaused = status.paused;
-    if (!mpvPaused && mpvCurrentTime >= trimEnd) {
+    if (editorMode === "trim" && !mpvPaused && mpvCurrentTime >= trimEnd) {
       await window.clips.pauseMpv(true);
       mpvPaused = true;
       await seekMpv(trimStart);
@@ -960,6 +1112,8 @@ document.addEventListener("keyup", event => {
 window.addEventListener("blur", stopArrowSeeking);
 $("editor").addEventListener("close", () => {
   stopArrowSeeking();
+  clearTimeout(liveMixTimer);
+  liveMixTimer = null;
   window.clips.setModalAppearance(false);
   clearInterval(mpvPollTimer);
   mpvPollTimer = null;
@@ -967,24 +1121,26 @@ $("editor").addEventListener("close", () => {
   $("export-trim").textContent = "Export trimmed clip";
   $("export-progress").classList.add("hidden");
   $("mpv-loading").classList.remove("hidden");
-  $("editor").classList.remove("viewer-mode");
+  $("editor").classList.remove("viewer-mode", "editing-mode", "mixer-mode", "trim-mode");
+  $("mixer-progress").classList.add("hidden");
+  $("mixer-progress").querySelector("i").style.width = "0%";
+  $("save-mix-copy").disabled = false;
+  $("save-mix-replace").disabled = false;
   editorMode = "trim";
+  mixingPath = "";
+  mixerLoadedPath = "";
+  $("mixer-tracks").innerHTML = "";
   editingPath = "";
 });
 $("recording-list").onclick = openRecording;
 $("replay-list").onclick = openRecording;
-$("recording-list").addEventListener("click", openEditor);
-$("replay-list").addEventListener("click", openEditor);
 document.addEventListener("click", toggleFavorite);
 document.addEventListener("click", toggleRecordingSelection);
 document.addEventListener("click", requestSingleDelete);
 const archiveDays = $("archive-days");
 archiveDays.addEventListener("click", openRecording);
-archiveDays.addEventListener("click", openEditor);
 $("recent-favorite-list").onclick = openRecording;
-$("recent-favorite-list").addEventListener("click", openEditor);
 $("archive-favorite-list").onclick = openRecording;
-$("archive-favorite-list").addEventListener("click", openEditor);
 window.clips.onState((s) => render(s));
 window.clips.getState().then((s) => render(s, true));
 // Main-process state events keep the UI current. Only recover state after a

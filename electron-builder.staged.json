@@ -11,6 +11,10 @@
   ],
   "extraResources": [
     {
+      "from": "legal",
+      "to": "legal"
+    },
+    {
       "from": "vendor/capture-host/clips-capture-host.exe",
       "to": "capture-host/clips-capture-host.exe"
     },

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// This host links with the GPL build of libmpv distributed with Clips.
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
@@ -59,6 +62,16 @@ static void commandLoop() {
       stream >> volume;
       volume = max(0.0, min(100.0, volume));
       mpv_set_property(player, "volume", MPV_FORMAT_DOUBLE, &volume);
+      respond(id, "ok");
+    } else if (command == "audio-mix") {
+      std::string graph;
+      std::getline(stream, graph);
+      if (!graph.empty() && graph.front() == '\t') graph.erase(0, 1);
+      int result = mpv_set_property_string(player, "lavfi-complex", graph.c_str());
+      respond(id, result < 0 ? "error\tCould not update the live audio mix." : "ok");
+    } else if (command == "audio-reset") {
+      mpv_set_property_string(player, "lavfi-complex", "");
+      mpv_set_property_string(player, "aid", "auto");
       respond(id, "ok");
     } else if (command == "bounds") {
       int x = 0, y = 0, width = 1, height = 1;

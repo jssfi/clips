@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// This host links with OBS Studio/libobs, which is licensed under GPL-2.0-or-later.
+
 #include <windows.h>
 
 #include <obs.h>
@@ -180,8 +183,6 @@ public:
 			throw std::runtime_error("The bundled libobs protected-game fallback failed to load.");
 		if (!obs_source_get_display_name("noise_gate_filter"))
 			throw std::runtime_error("The bundled libobs microphone noise gate failed to load.");
-		if (!obs_source_get_display_name("nvidia_audiofx_filter"))
-			throw std::runtime_error("The bundled NVIDIA microphone filter failed to load.");
 
 		scene_.reset(obs_scene_create("Clips Capture Scene"));
 		if (!scene_)
@@ -479,7 +480,7 @@ private:
 		clip_seconds_ = std::max<int64_t>(5, obs_data_get_int(request, "clipLengthSeconds"));
 
 		create_video_encoder();
-		create_audio_encoder();
+		create_audio_encoders();
 
 		record_output_.reset(obs_output_create("ffmpeg_muxer", "Clips Recording", nullptr, nullptr));
 		replay_output_.reset(obs_output_create("replay_buffer", "Clips Replay Buffer", nullptr, nullptr));
@@ -488,8 +489,9 @@ private:
 
 		for (obs_output_t *output : {record_output_.get(), replay_output_.get()}) {
 			obs_output_set_video_encoder(output, video_encoder_);
-			obs_output_set_audio_encoder(output, audio_encoder_, 0);
 		}
+		if (!recording() && !replay_active())
+			configure_output_audio_tracks();
 	}
 
 	void create_video_encoder()
@@ -537,23 +539,47 @@ private:
 		obs_encoder_set_video(video_encoder_, obs_get_video());
 	}
 
-	void create_audio_encoder()
+	void create_audio_encoders()
 	{
 		static const char *ids[] = {"ffmpeg_aac", "mf_aac", "CoreAudio_AAC"};
+		const char *selected = nullptr;
 		for (const char *id : ids) {
-			EncoderRef candidate(obs_audio_encoder_create(id, "Clips Audio Encoder", nullptr, 0, nullptr));
+			EncoderRef candidate(obs_audio_encoder_create(id, "Combined", nullptr, 0, nullptr));
 			if (candidate) {
-				audio_encoder_ = std::move(candidate);
+				audio_encoders_.push_back(std::move(candidate));
+				selected = id;
 				break;
 			}
 		}
-		if (!audio_encoder_)
+		if (audio_encoders_.empty())
 			throw std::runtime_error("No compatible AAC audio encoder is available.");
-		DataRef settings(obs_data_create());
-		obs_data_set_int(settings, "bitrate", 192);
-		obs_data_set_string(settings, "rate_control", "CBR");
-		obs_encoder_update(audio_encoder_, settings);
-		obs_encoder_set_audio(audio_encoder_, obs_get_audio());
+		for (size_t mixer = 1; mixer < MAX_AUDIO_MIXES; ++mixer) {
+			EncoderRef encoder(obs_audio_encoder_create(selected, ("Clips track " + std::to_string(mixer + 1)).c_str(),
+								 nullptr, mixer, nullptr));
+			if (!encoder)
+				throw std::runtime_error("Could not create the multi-track AAC encoders.");
+			audio_encoders_.push_back(std::move(encoder));
+		}
+		for (auto &encoder : audio_encoders_) {
+			DataRef settings(obs_data_create());
+			obs_data_set_int(settings, "bitrate", 192);
+			obs_data_set_string(settings, "rate_control", "CBR");
+			obs_encoder_update(encoder, settings);
+			obs_encoder_set_audio(encoder, obs_get_audio());
+		}
+	}
+
+	void configure_output_audio_tracks()
+	{
+		if (active_audio_track_names_.empty())
+			active_audio_track_names_.push_back("Combined");
+		for (size_t index = 0; index < audio_encoders_.size(); ++index) {
+			const bool active = index < active_audio_track_names_.size();
+			if (active)
+				obs_encoder_set_name(audio_encoders_[index], active_audio_track_names_[index].c_str());
+			for (obs_output_t *output : {record_output_.get(), replay_output_.get()})
+				obs_output_set_audio_encoder(output, active ? audio_encoders_[index].get() : nullptr, index);
+		}
 	}
 
 	void rebuild_sources(obs_data_t *request)
@@ -572,6 +598,22 @@ private:
 
 		DataArrayRef applications(obs_data_get_array(request, "applications"));
 		const size_t count = applications ? obs_data_array_count(applications) : 0;
+		const std::string microphone_id = obs_data_get_string(request, "microphoneDeviceId");
+		const bool has_microphone = !microphone_id.empty() && microphone_id != "disabled";
+		size_t audio_application_count = 0;
+		for (size_t index = 0; index < count; ++index) {
+			DataRef application(obs_data_array_item(applications, index));
+			if (obs_data_get_bool(application, "captureAudio"))
+				++audio_application_count;
+		}
+		const size_t application_track_capacity = MAX_AUDIO_MIXES - 1 - (has_microphone ? 1 : 0);
+		const bool group_extra_applications = audio_application_count > application_track_capacity;
+		const size_t individual_application_count = group_extra_applications
+			? application_track_capacity - 1
+			: audio_application_count;
+		active_audio_track_names_.clear();
+		active_audio_track_names_.push_back("Combined");
+		size_t audio_application_index = 0;
 		size_t requested_video_sources = 0;
 		size_t created_video_sources = 0;
 		for (size_t index = 0; index < count; ++index) {
@@ -646,6 +688,12 @@ private:
 			}
 
 			if (capture_audio) {
+				const bool grouped = group_extra_applications && audio_application_index >= individual_application_count;
+				const size_t mixer_index = grouped ? application_track_capacity : audio_application_index + 1;
+				if (!grouped)
+					active_audio_track_names_.push_back(executable);
+				else if (active_audio_track_names_.size() <= mixer_index)
+					active_audio_track_names_.push_back("Other applications");
 				DataRef settings(obs_data_create());
 				obs_data_set_string(settings, "window", window.c_str());
 				obs_data_set_int(settings, "priority", 2);
@@ -653,15 +701,15 @@ private:
 								  ("Clips Audio - " + executable).c_str(), settings, nullptr));
 				if (source) {
 					obs_scene_add(scene_, source);
-					obs_source_set_audio_mixers(source, 1);
+					obs_source_set_audio_mixers(source, 1u | (1u << mixer_index));
 					obs_source_inc_showing(source);
 					obs_source_inc_active(source);
 					sources_.push_back(std::move(source));
 				}
+				++audio_application_index;
 			}
 		}
-		const std::string microphone_id = obs_data_get_string(request, "microphoneDeviceId");
-		if (!microphone_id.empty() && microphone_id != "disabled") {
+		if (has_microphone) {
 			DataRef settings(obs_data_create());
 			obs_data_set_string(settings, "device_id", microphone_id.c_str());
 			obs_data_set_bool(settings, "use_device_timing", false);
@@ -669,19 +717,25 @@ private:
 			if (!source)
 				throw std::runtime_error("The selected microphone is not available.");
 			obs_scene_add(scene_, source);
-			obs_source_set_audio_mixers(source, 1);
+			const size_t microphone_mixer_index = active_audio_track_names_.size();
+			active_audio_track_names_.push_back("Microphone");
+			obs_source_set_audio_mixers(source, 1u | (1u << microphone_mixer_index));
 			obs_source_set_volume(source, microphone_volume_);
 			microphone_nvidia_noise_removal_ = !obs_data_has_user_value(request, "microphoneNvidiaNoiseRemoval") ||
 				obs_data_get_bool(request, "microphoneNvidiaNoiseRemoval");
-			DataRef nvidia_settings(obs_data_create());
-			obs_data_set_string(nvidia_settings, "method", "denoiser");
-			obs_data_set_double(nvidia_settings, "intensity", 1.0);
-			SourceRef nvidia_filter(obs_source_create_private("nvidia_audiofx_filter",
-				"Clips NVIDIA Noise Removal", nvidia_settings));
-			if (!nvidia_filter)
-				throw std::runtime_error("NVIDIA Audio Effects could not initialize. Restart Windows after installing the NVIDIA runtime.");
-			obs_source_set_enabled(nvidia_filter, microphone_nvidia_noise_removal_);
-			obs_source_filter_add(source, nvidia_filter);
+			if (obs_source_get_display_name("nvidia_audiofx_filter")) {
+				DataRef nvidia_settings(obs_data_create());
+				obs_data_set_string(nvidia_settings, "method", "denoiser");
+				obs_data_set_double(nvidia_settings, "intensity", 1.0);
+				SourceRef nvidia_filter(obs_source_create_private("nvidia_audiofx_filter",
+					"Clips NVIDIA Noise Removal", nvidia_settings));
+				if (nvidia_filter) {
+					obs_source_set_enabled(nvidia_filter, microphone_nvidia_noise_removal_);
+					obs_source_filter_add(source, nvidia_filter);
+				} else {
+					fprintf(stderr, "[capture-host] NVIDIA microphone filter could not initialize; continuing without it\n");
+				}
+			}
 			DataRef gate_settings(obs_data_create());
 			microphone_noise_gate_db_ = static_cast<float>(std::clamp<int64_t>(
 				obs_data_get_int(request, "microphoneNoiseGateDb"), -60, -5));
@@ -711,6 +765,8 @@ private:
 			throw std::runtime_error("No video capture source was available for the active game.");
 		if (sources_.empty())
 			throw std::runtime_error("No active game capture sources were available.");
+		if (!recording() && !replay_active())
+			configure_output_audio_tracks();
 	}
 
 	static void microphone_meter_updated(void *parameter, const float magnitude[MAX_AUDIO_CHANNELS],
@@ -769,7 +825,7 @@ private:
 		record_output_.reset();
 		replay_output_.reset();
 		video_encoder_.reset();
-		audio_encoder_.reset();
+		audio_encoders_.clear();
 	}
 
 	fs::path runtime_root_;
@@ -796,7 +852,8 @@ private:
 	SceneRef scene_;
 	std::vector<SourceRef> sources_;
 	EncoderRef video_encoder_;
-	EncoderRef audio_encoder_;
+	std::vector<EncoderRef> audio_encoders_;
+	std::vector<std::string> active_audio_track_names_{"Combined"};
 	OutputRef record_output_;
 	OutputRef replay_output_;
 };

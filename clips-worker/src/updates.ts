@@ -2,16 +2,19 @@ const RELEASE_PREFIX = "releases/";
 const VERSIONED_ARTIFACT =
   /^(?:jss-clips-(?:update|setup|portable)-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-(?:x64|arm64)\.(?:exe|exe\.blockmap)|jss-clips-app-\d+\.\d+\.\d+-x64\.zip)$/;
 
-function artifactName(pathname: string): string | null {
+function artifactName(pathname: string): { name: string; key: string } | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(pathname);
   } catch {
     return null;
   }
-  if (!decoded.startsWith("/") || decoded.slice(1).includes("/")) return null;
-  const name = decoded.slice(1);
-  return name === "latest.yml" || name === "latest.json" || VERSIONED_ARTIFACT.test(name) ? name : null;
+  if (!decoded.startsWith("/")) return null;
+  const stable = decoded.startsWith("/stable/");
+  const name = decoded.slice(stable ? 8 : 1);
+  if (name.includes("/")) return null;
+  if (name !== "latest.yml" && name !== "latest.json" && !VERSIONED_ARTIFACT.test(name)) return null;
+  return { name, key: `${RELEASE_PREFIX}${stable ? "stable/" : ""}${name}` };
 }
 
 function contentType(name: string): string {
@@ -68,9 +71,9 @@ async function serve(request: Request, bucket: R2Bucket): Promise<Response> {
     });
   }
 
-  const name = artifactName(new URL(request.url).pathname);
-  if (!name) return new Response("Not Found", { status: 404 });
-  const key = `${RELEASE_PREFIX}${name}`;
+  const artifact = artifactName(new URL(request.url).pathname);
+  if (!artifact) return new Response("Not Found", { status: 404 });
+  const { name, key } = artifact;
 
   if (request.method === "HEAD") {
     const object = await bucket.head(key);

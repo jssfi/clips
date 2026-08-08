@@ -34,7 +34,7 @@ Clips is a Windows tray app with a private native capture engine built directly 
 
 ## Updates
 
-- Fast restart-only nightly updates include SHA-512 verification and rollback retention.
+- Stable and opt-in nightly channels use fast restart-only updates with SHA-512 verification and rollback retention.
 - Persistent runtime management for libobs, FFmpeg, MPV, and the native hosts keeps normal updates smaller and faster.
 
 ## Cloudflare distribution
@@ -69,6 +69,8 @@ Copy `.env.example` to `.env` to configure official build URLs and Cloudflare Wo
 ## License
 
 Original Clips code is available under the MIT License. Third-party components and source governed by another license retain their respective terms; see [LICENSE](LICENSE).
+
+The native libobs and libmpv hosts are GPL-2.0-or-later. Exact versions, license variants, source archives, and build-recipe links for distributed dependencies are documented in [third-party notices](legal/THIRD_PARTY_NOTICES.md).
 
 ## Retention safety
 

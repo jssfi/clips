@@ -16,6 +16,8 @@ const { MPV_QUIT_ON_FULLSCREEN_EXIT_SCRIPT, mpvFullscreenArgs } = require('./mpv
 const { createLogger } = require('./logger');
 const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
 const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./telemetry');
+const { parseProcessList } = require('./process-list');
+const changelog = require('./changelog.json');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
 app.setPath('userData', path.join(app.getPath('appData'), 'Clips'));
@@ -394,7 +396,7 @@ async function previewPath(filePath) {
 async function recordingThumbnail(filePath) {
   const sourcePath = validateRecordingPath(filePath);
   const stat = fs.statSync(sourcePath);
-  const cacheFolder = path.join(app.getPath('userData'), 'thumbnail-cache');
+  const cacheFolder = path.join(app.getPath('userData'), 'thumbnail-cache-v2');
   fs.mkdirSync(cacheFolder, { recursive: true });
   const key = crypto.createHash('sha256').update(`${sourcePath}:${stat.size}:${stat.mtimeMs}`).digest('hex').slice(0, 24);
   const outputPath = path.join(cacheFolder, `${key}.jpg`);
@@ -407,12 +409,19 @@ async function recordingThumbnail(filePath) {
     if (!fs.existsSync(executable)) return '';
     const temporaryPath = `${outputPath}.working.jpg`;
     try {
-      await execFileAsync(executable, [
-        '-hide_banner', '-loglevel', 'error', '-y', '-ss', '0.75', '-i', sourcePath,
-        '-frames:v', '1', '-vf',
-        'scale=640:360:force_original_aspect_ratio=increase,crop=640:360',
-        '-q:v', '3', temporaryPath
+      const renderThumbnail = filters => execFileAsync(executable, [
+        '-hide_banner', '-loglevel', 'error', '-y', '-i', sourcePath,
+        '-frames:v', '1', '-vf', filters,
+        '-q:v', '3', '-strict', 'unofficial', temporaryPath
       ], { windowsHide: true, maxBuffer: 5 * 1024 * 1024 });
+      const scale = 'scale=640:360:force_original_aspect_ratio=increase,crop=640:360';
+      try {
+        await renderThumbnail(`signalstats,metadata=select:key=lavfi.signalstats.YAVG:value=18:function=greater,${scale}`);
+        if (!fs.existsSync(temporaryPath) || !fs.statSync(temporaryPath).size) throw new Error('No visible frame found.');
+      } catch {
+        fs.rmSync(temporaryPath, { force: true });
+        await renderThumbnail(scale);
+      }
       fs.renameSync(temporaryPath, outputPath);
       return readThumbnail();
     } catch {
@@ -494,6 +503,23 @@ function setMpvBounds(bounds) {
   if (!mpvProcess?.stdin?.writable) return;
   mpvCommand('bounds', Math.round(bounds.x || 0), Math.round(bounds.y || 0), Math.round(bounds.width || 1), Math.round(bounds.height || 1)).catch(() => {});
 }
+async function setMpvAudioMix(requestedAdjustments) {
+  const adjustments = (Array.isArray(requestedAdjustments) ? requestedAdjustments : [])
+    .map(adjustment => ({
+      index: Number(adjustment?.index),
+      volume: Math.min(2, Math.max(0, Number(adjustment?.volume) || 0))
+    }))
+    .filter(adjustment => Number.isInteger(adjustment.index) && adjustment.index >= 0 && adjustment.index < 32);
+  if (!adjustments.length) return mpvCommand('audio-reset');
+  const inputs = adjustments.map((adjustment, index) =>
+    `[aid${adjustment.index + 1}]volume=${adjustment.volume.toFixed(2)}[live${index}]`);
+  const output = adjustments.length === 1
+    ? `[live0]anull[ao]`
+    : `${adjustments.map((_, index) => `[live${index}]`).join('')}amix=inputs=${adjustments.length}:duration=longest:normalize=0[ao]`;
+  const response = await mpvCommand('audio-mix', `${inputs.join(';')};${output}`);
+  if (response[0] === 'error') throw new Error(response[1] || 'Could not update the live audio mix.');
+  return true;
+}
 async function startMpvSession(filePath, bounds) {
   const target = validateRecordingPath(filePath);
   const persistentHost = path.join(persistentRuntimeRoot, 'libmpv', 'mpv-host.exe');
@@ -546,6 +572,116 @@ function availableTrimPath(sourcePath) {
   let suffix = 2;
   while (fs.existsSync(candidate)) candidate = `${base}-trimmed-${suffix++}${extension}`;
   return candidate;
+}
+function availableMixedPath(sourcePath) {
+  const extension = path.extname(sourcePath);
+  const base = sourcePath.slice(0, -extension.length);
+  let candidate = `${base}-mixed${extension}`;
+  let suffix = 2;
+  while (fs.existsSync(candidate)) candidate = `${base}-mixed-${suffix++}${extension}`;
+  return candidate;
+}
+async function recordingAudioTracks(filePath) {
+  const sourcePath = validateRecordingPath(filePath);
+  const executable = ffmpegPath();
+  if (!fs.existsSync(executable)) throw new Error('FFmpeg is missing from this Clips build.');
+  const { stderr = '' } = await execFileAsync(executable, [
+    '-hide_banner', '-i', sourcePath, '-t', '0', '-map', '0:a?', '-f', 'null', '-'
+  ], { windowsHide: true, maxBuffer: 10 * 1024 * 1024 });
+  const tracks = [];
+  let currentTrack = null;
+  for (const line of stderr.split(/\r?\n/)) {
+    if (/^Stream mapping:/.test(line)) break;
+    const match = line.match(/^\s*Stream #0:(\d+)(?:\([^)]*\))?(?:\[[^\]]+\])?: Audio:\s*([^,]+)/);
+    if (match) {
+      currentTrack = { index: tracks.length, streamIndex: Number(match[1]), codec: match[2].trim(), label: `Audio track ${tracks.length + 1}`, kind: 'track' };
+      tracks.push(currentTrack);
+      continue;
+    }
+    const title = currentTrack && line.match(/^\s*title\s*:\s*(.+?)\s*$/i);
+    if (title) {
+      currentTrack.label = title[1];
+      currentTrack.kind = title[1].toLowerCase() === 'combined' ? 'combined' : 'stem';
+    } else if (/^\s*Stream #/.test(line)) {
+      currentTrack = null;
+    }
+  }
+  return tracks;
+}
+async function mixRecordingAudio(filePath, requestedAdjustments, replace) {
+  const sourcePath = validateRecordingPath(filePath);
+  const tracks = await recordingAudioTracks(sourcePath);
+  if (!tracks.length) throw new Error('This clip has no audio tracks.');
+  const adjustmentMap = new Map((Array.isArray(requestedAdjustments) ? requestedAdjustments : []).map(adjustment => [
+    Number(adjustment?.index), Math.min(2, Math.max(0, Number(adjustment?.volume) || 0))
+  ]));
+  const volumeFor = track => adjustmentMap.has(track.index) ? adjustmentMap.get(track.index) : 1;
+  const executable = ffmpegPath();
+  const extension = path.extname(sourcePath);
+  const outputPath = replace ? sourcePath : availableMixedPath(sourcePath);
+  const temporaryPath = `${sourcePath.slice(0, -extension.length)}.mixing-${crypto.randomUUID()}${extension}`;
+  const hasCombinedTrack = tracks.length > 1 && tracks[0].kind === 'combined';
+  const editableTracks = hasCombinedTrack ? tracks.slice(1) : tracks;
+  const filters = [];
+  const audioMaps = [];
+  const metadataArgs = [];
+  if (hasCombinedTrack) {
+    editableTracks.forEach((track, index) => {
+      filters.push(`[0:a:${track.index}]volume=${volumeFor(track).toFixed(2)},asplit=2[mix${index}][stem${index}]`);
+    });
+    filters.push(`${editableTracks.map((_, index) => `[mix${index}]`).join('')}amix=inputs=${editableTracks.length}:duration=longest:normalize=0[combined]`);
+    audioMaps.push('-map', '[combined]', ...editableTracks.flatMap((_, index) => ['-map', `[stem${index}]`]));
+    ['Combined', ...editableTracks.map(track => track.label)].forEach((label, index) => {
+      metadataArgs.push(`-metadata:s:a:${index}`, `title=${label}`);
+    });
+  } else {
+    editableTracks.forEach((track, index) => {
+      filters.push(`[0:a:${track.index}]volume=${volumeFor(track).toFixed(2)}[audio${index}]`);
+      audioMaps.push('-map', `[audio${index}]`);
+      metadataArgs.push(`-metadata:s:a:${index}`, `title=${track.label}`);
+    });
+  }
+  const mapArgs = ['-map', '0', '-map', '-0:a', ...audioMaps];
+  try {
+    await new Promise((resolve, reject) => {
+      const child = spawn(executable, [
+        '-hide_banner', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', '-y', '-i', sourcePath,
+        '-filter_complex', filters.join(';'), ...mapArgs, '-map_metadata', '0', ...metadataArgs,
+        '-disposition:a:0', 'default', '-c', 'copy', '-c:a', 'aac', '-b:a', '192k', temporaryPath
+      ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      let progressBuffer = '', errorText = '';
+      child.stdout.on('data', chunk => {
+        progressBuffer += chunk.toString();
+        const lines = progressBuffer.split(/\r?\n/);
+        progressBuffer = lines.pop() || '';
+        for (const line of lines) {
+          const match = line.match(/^progress=(continue|end)$/);
+          if (match && win && !win.isDestroyed()) win.webContents.send('audio:mix-progress', { complete: match[1] === 'end' });
+        }
+      });
+      child.stderr.on('data', chunk => { errorText += chunk.toString(); });
+      child.once('error', reject);
+      child.once('exit', code => code === 0 ? resolve() : reject(new Error(errorText.trim() || `FFmpeg exited with code ${code}.`)));
+    });
+    if (replace) {
+      const backupPath = `${sourcePath}.audio-backup`;
+      fs.renameSync(sourcePath, backupPath);
+      try {
+        fs.renameSync(temporaryPath, sourcePath);
+        fs.rmSync(backupPath, { force: true });
+      } catch (error) {
+        if (fs.existsSync(backupPath) && !fs.existsSync(sourcePath)) fs.renameSync(backupPath, sourcePath);
+        throw error;
+      }
+    } else {
+      fs.renameSync(temporaryPath, outputPath);
+    }
+  } catch (error) {
+    fs.rmSync(temporaryPath, { force: true });
+    throw new Error(error.stderr?.trim() || error.message || 'FFmpeg could not update this clip.');
+  }
+  thumbnailPromises.delete(sourcePath);
+  return outputPath;
 }
 function normalizeTrimBitrate(value) {
   return ['6M', '12M', '18M'].includes(value) ? value : 'original';
@@ -710,20 +846,15 @@ Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
       }} else { $null }
     }
   } | Sort-Object name -Unique | ConvertTo-Json -Compress`;
-  const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true });
-  const parsed = JSON.parse((stdout || '[]').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ''));
-  return (Array.isArray(parsed) ? parsed : [parsed]).map(item => ({
-    name: item.name,
-    path: item.path || '',
-    title: item.title || item.name,
-    windowClass: item.windowClass || '',
-    bounds: item.bounds ? {
-      x: Number(item.bounds.x),
-      y: Number(item.bounds.y),
-      width: Number(item.bounds.width),
-      height: Number(item.bounds.height)
-    } : null
-  }));
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true });
+    try { return parseProcessList(stdout); }
+    catch (error) {
+      logger.warn('process list JSON was incomplete', { attempt, bytes: Buffer.byteLength(stdout || ''), message: error.message });
+      if (attempt === 2) return runningApps;
+    }
+  }
+  return runningApps;
 }
 async function monitor() {
   try {
@@ -789,7 +920,7 @@ async function tryConnect() {
   })();
   return connectPromise;
 }
-async function state() { return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings: recentRecordings(), archivedRecordings: archivedRecordings(), lastError, lastClip, captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: app.getVersion(), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()) }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState }; }
+async function state() { return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings: recentRecordings(), archivedRecordings: archivedRecordings(), lastError, lastClip, captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: app.getVersion(), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()), changelog }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState }; }
 
 async function collectSystemInformation() {
   let gpu = 'Unknown';
@@ -865,9 +996,10 @@ function setUpdateState(next) {
   broadcast().catch(() => {});
 }
 function updateFeedUrl() {
-  return String(process.env.CLIPS_UPDATE_URL || (app.isPackaged && settings?.nightlyUpdates ? DEFAULT_UPDATE_URL : ''))
-    .trim()
-    .replace(/\/+$/, '');
+  if (process.env.CLIPS_UPDATE_URL) return String(process.env.CLIPS_UPDATE_URL).trim().replace(/\/+$/, '');
+  const configuredUrl = DEFAULT_UPDATE_URL.trim().replace(/\/+$/, '');
+  if (!app.isPackaged) return '';
+  return settings?.nightlyUpdates ? configuredUrl : `${configuredUrl}/stable`;
 }
 function configureUpdates() {
   clearTimeout(updateCheckTimeout);
@@ -1222,6 +1354,7 @@ ipcMain.handle('mpv:seek', (_event, seconds) => mpvCommand('seek', Math.max(0, N
 ipcMain.handle('mpv:toggle', () => mpvCommand('toggle'));
 ipcMain.handle('mpv:pause', (_event, paused = true) => mpvCommand('pause', paused ? 1 : 0));
 ipcMain.handle('mpv:volume', (_event, volume) => mpvCommand('volume', Math.min(100, Math.max(0, Number(volume) || 0))));
+ipcMain.handle('mpv:audio-mix', (_event, adjustments) => setMpvAudioMix(adjustments));
 ipcMain.handle('mpv:close', () => closeMpvSession());
 ipcMain.handle('mpv:fullscreen', (_event, filePath) => {
   const target = validateRecordingPath(filePath);
@@ -1281,6 +1414,17 @@ ipcMain.handle('window:modal-appearance', (event, active) => {
 });
 ipcMain.handle('recording:trim', async (_event, filePath, startSeconds, endSeconds, bitrate) => {
   const outputPath = await trimRecording(filePath, startSeconds, endSeconds, bitrate);
+  return { outputPath, state: await state() };
+});
+ipcMain.handle('recording:audio-tracks', (_event, filePath) => recordingAudioTracks(filePath));
+ipcMain.handle('recording:audio-mix', async (_event, filePath, adjustments, replace) => {
+  const target = validateRecordingPath(filePath);
+  const captureStatus = await obs.status();
+  if (replace && captureStatus.recording && path.dirname(target) === path.join(settings.recordingsFolder, todayKey()) && isRawRecordingName(path.basename(target))) {
+    throw new Error('Stop the active recording before saving audio changes to it. You can still save a new clip.');
+  }
+  const outputPath = await mixRecordingAudio(target, adjustments, !!replace);
+  await broadcast();
   return { outputPath, state: await state() };
 });
 ipcMain.handle('recording:upload', async (_event, filePath) => ({ link: await uploadToCdn(filePath) }));

@@ -1,0 +1,77 @@
+[
+  {
+    "version": "0.2.8",
+    "title": "Live audio mixing",
+    "changes": [
+      "Simplified the recording player to a single Edit action with the close button kept at the top right.",
+      "Audio source sliders and mute controls now update playback immediately without modifying the clip until Save is pressed."
+    ]
+  },
+  {
+    "version": "0.2.7",
+    "title": "Dedicated clip editor",
+    "changes": [
+      "Replaced the player Edit menu with direct Trim and Audio actions.",
+      "Added a dedicated editor workspace with a large video preview and persistent Mix and Trim sidebar tabs."
+    ]
+  },
+  {
+    "version": "0.2.6",
+    "title": "Editing inside the player",
+    "changes": [
+      "Moved Trim and Volume mix out of clip-card menus and into the recording player.",
+      "Playback now stays visible while adjusting individual audio source tracks."
+    ]
+  },
+  {
+    "version": "0.2.5",
+    "title": "True multi-track audio",
+    "changes": [
+      "New recordings and replays now keep application and microphone audio on named, independently editable tracks.",
+      "Volume mixing rebuilds the default playback mix while preserving the source tracks and original video quality."
+    ]
+  },
+  {
+    "version": "0.2.4",
+    "title": "Clip volume mixer",
+    "changes": [
+      "Added per-track volume and mute controls with options to update a clip or save a new mixed copy.",
+      "Moved clip editing actions into a compact three-dot menu."
+    ]
+  },
+  {
+    "version": "0.2.3",
+    "title": "Stable update checks",
+    "changes": [
+      "Manual update checks are now available on both stable and nightly channels."
+    ]
+  },
+  {
+    "version": "0.2.2",
+    "title": "Startup reliability and changelog",
+    "changes": [
+      "Stopped transient process-list output from surfacing as a startup error.",
+      "Added this scrolling release history to the About page.",
+      "Consolidated updates and telemetry behind clips.jss.fi."
+    ]
+  },
+  {
+    "version": "0.2.1",
+    "title": "First stable release",
+    "changes": [
+      "Introduced separate stable and nightly update channels.",
+      "Raw recording thumbnails now skip the black frames before game capture appears.",
+      "Added optional anonymous version or diagnostic telemetry.",
+      "Bundled complete third-party licensing notices and source information."
+    ]
+  },
+  {
+    "version": "0.1",
+    "title": "Development releases",
+    "changes": [
+      "Built the native libobs recording and replay-buffer engine.",
+      "Added per-application audio, MPV playback, trimming, storage cleanup, and restart-only updates.",
+      "Redesigned the recording library, settings, tray controls, and in-game notifications."
+    ]
+  }
+]

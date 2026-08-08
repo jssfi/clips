@@ -1,6 +1,8 @@
 param(
     [string]$Version,
-    [string]$Bucket
+    [string]$Bucket,
+    [ValidateSet('nightly', 'stable', 'both')]
+    [string]$Channel = 'nightly'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,7 +21,7 @@ if (-not $Bucket -and (Test-Path -LiteralPath $envFile)) {
 }
 if (-not $Bucket) { throw 'CLIPS_UPDATE_BUCKET is missing. Copy .env.example to .env and configure it.' }
 
-& node (Join-Path $projectRoot 'scripts\write-worker-config.js') update-worker
+& node (Join-Path $projectRoot 'scripts\write-worker-config.js') clips-worker
 if ($LASTEXITCODE -ne 0) { throw 'Could not generate the update Worker configuration.' }
 
 if (-not $Version) {
@@ -48,10 +50,13 @@ if ($stagedLatest.version -ne $Version -or $stagedLatest.url -ne $appPackageName
 
 Push-Location $workerRoot
 try {
+  $channels = if ($Channel -eq 'both') { @('nightly', 'stable') } else { @($Channel) }
+  foreach ($releaseChannel in $channels) {
+    $releasePrefix = if ($releaseChannel -eq 'stable') { 'releases/stable' } else { 'releases' }
     $previousLatest = [System.IO.Path]::GetTempFileName()
     $oldArtifacts = @()
     try {
-        & $wrangler r2 object get "$Bucket/releases/latest.yml" --file $previousLatest --remote
+        & $wrangler r2 object get "$Bucket/$releasePrefix/latest.yml" --file $previousLatest --remote
         if ($LASTEXITCODE -eq 0) {
             $previous = Get-Content -LiteralPath $previousLatest -Raw
             $oldInstallerNames = [regex]::Matches($previous, '(?m)^\s*(?:-\s+url:|path:)\s+([^\s]+)\s*$') |
@@ -65,7 +70,7 @@ try {
     }
     $previousStagedLatest = [System.IO.Path]::GetTempFileName()
     try {
-        & $wrangler r2 object get "$Bucket/releases/latest.json" --file $previousStagedLatest --remote
+        & $wrangler r2 object get "$Bucket/$releasePrefix/latest.json" --file $previousStagedLatest --remote
         if ($LASTEXITCODE -eq 0) {
             $previousStaged = Get-Content -LiteralPath $previousStagedLatest -Raw | ConvertFrom-Json
             if ($previousStaged.url -match '^jss-clips-app-[0-9A-Za-z.-]+-x64\.zip$') {
@@ -82,7 +87,7 @@ try {
             throw "Missing release artifact: $source"
         }
         Write-Host "Uploading $($file.Name)"
-        & $wrangler r2 object put "$Bucket/releases/$($file.Name)" `
+        & $wrangler r2 object put "$Bucket/$releasePrefix/$($file.Name)" `
             --file $source `
             --content-type $file.Type `
             --cache-control $file.Cache `
@@ -93,11 +98,12 @@ try {
     foreach ($oldArtifact in ($oldArtifacts | Select-Object -Unique)) {
         if ($currentArtifacts -contains $oldArtifact) { continue }
         Write-Host "Removing superseded artifact $oldArtifact"
-        & $wrangler r2 object delete "$Bucket/releases/$oldArtifact" --remote
+        & $wrangler r2 object delete "$Bucket/$releasePrefix/$oldArtifact" --remote
         if ($LASTEXITCODE -ne 0) { throw "Cleanup failed: $oldArtifact" }
     }
+  }
 } finally {
     Pop-Location
 }
 
-Write-Host "Published Clips $Version to R2."
+Write-Host "Published Clips $Version to $Channel channel(s) in R2."

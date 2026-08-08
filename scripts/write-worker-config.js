@@ -4,7 +4,8 @@ const { loadProjectEnv, required } = require('./env');
 
 const projectRoot = path.join(__dirname, '..');
 const workerName = process.argv[2];
-if (!['update-worker', 'telemetry-worker', 'clips-worker'].includes(workerName)) throw new Error('Choose update-worker, telemetry-worker, or clips-worker.');
+const workerPaths = new Set(['clips-worker', 'legacy/update-worker', 'legacy/telemetry-worker']);
+if (!workerPaths.has(workerName)) throw new Error('Choose clips-worker or a worker under legacy/.');
 
 const workerRoot = path.join(projectRoot, workerName);
 const templatePath = path.join(workerRoot, 'wrangler.template.jsonc');
