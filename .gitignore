@@ -1,5 +1,14 @@
 node_modules/
 dist/
 *.log
-.clippy-dev/
+*.obj
+.clips-dev/
+update-worker/.wrangler/
 vendor/obs-studio/
+vendor/ffmpeg/
+vendor/mpv/
+vendor/libmpv/
+vendor/obs-sdk/
+vendor/capture-host/
+vendor/libobs/
+vendor/libobs-runtime/

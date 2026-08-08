@@ -1,0 +1,14 @@
+{
+  "name": "jss-clips-update-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "wrangler types --check && tsc --noEmit && wrangler deploy --dry-run",
+    "deploy": "wrangler deploy --minify",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "wrangler": "^4.114.0"
+  }
+}

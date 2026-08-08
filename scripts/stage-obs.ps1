@@ -11,8 +11,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $Source 'bin\64bit\obs64.exe'))) {
 
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 $result = Start-Process -FilePath 'robocopy.exe' -ArgumentList @(
-    $Source,
-    $destination,
+    "`"$Source`"",
+    "`"$destination`"",
     '/E',
     '/COPY:DAT',
     '/DCOPY:DAT',

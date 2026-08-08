@@ -1,0 +1,46 @@
+{
+  "appId": "io.clips.desktop",
+  "productName": "jss clips",
+  "files": [
+    "src/**/*",
+    "assets/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "vendor/capture-host/clips-capture-host.exe",
+      "to": "capture-host/clips-capture-host.exe"
+    },
+    {
+      "from": "vendor/libobs/obs-plugins/64bit/obs-filters.dll",
+      "to": "microphone-filters/obs-filters.dll"
+    },
+    {
+      "from": "vendor/libobs/obs-plugins/64bit/nv-filters.dll",
+      "to": "microphone-filters/nv-filters.dll"
+    },
+    {
+      "from": "vendor/libobs/data/obs-plugins/obs-filters",
+      "to": "microphone-filters/data"
+    },
+    {
+      "from": "vendor/mpv/mpv.exe",
+      "to": "mpv/mpv.exe"
+    },
+    {
+      "from": "node_modules/7zip-bin/win/x64/7za.exe",
+      "to": "tools/7za.exe"
+    }
+  ],
+  "asar": true,
+  "compression": "normal",
+  "win": {
+    "icon": "assets/app-icon.ico",
+    "target": ["nsis"]
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "artifactName": "jss-clips-update-${version}-${arch}.${ext}"
+  }
+}

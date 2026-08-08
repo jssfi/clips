@@ -1,25 +1,166 @@
 let state;
+let editingPath = "";
+let trimStart = 0;
+let trimEnd = 0;
+let draggingHandle = "";
+let draggingPlayhead = false;
+let mpvDuration = 0;
+let mpvCurrentTime = 0;
+let mpvPaused = true;
+let mpvPollTimer = null;
+let editorMode = "trim";
+const playerIcons = {
+  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
+  fullscreen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3zm11-5h5v5h-2V6h-3zM6 15v3h3v2H4v-5zm12 0h2v5h-5v-2h3z"/></svg>',
+};
+const thumbnailCache = new Map();
+const selectedRecordingPaths = new Set();
+let pendingDeletePaths = [];
+const thumbnailObserver = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (!entry.isIntersecting) return;
+    thumbnailObserver.unobserve(entry.target);
+    requestRecordingThumbnail(entry.target);
+  });
+}, { rootMargin: "180px" });
 const $ = (id) => document.getElementById(id);
+const formatTimestamp = (totalSeconds) => {
+  const safe = Math.max(0, Number(totalSeconds) || 0);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${seconds.toFixed(2).padStart(5, "0")}`;
+};
+const shortTimestamp = (seconds) => formatTimestamp(seconds).replace(/^00:/, "");
+const parseTimestamp = (value) => {
+  const parts = String(value).trim().split(":");
+  if (parts.length < 1 || parts.length > 3 || parts.some(part => part === "" || !Number.isFinite(Number(part)))) return NaN;
+  const numbers = parts.map(Number);
+  if (numbers.some(number => number < 0)) return NaN;
+  if (parts.length === 3 && (numbers[1] >= 60 || numbers[2] >= 60)) return NaN;
+  if (parts.length === 2 && numbers[1] >= 60) return NaN;
+  return parts.length === 3 ? numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
+    : parts.length === 2 ? numbers[0] * 60 + numbers[1] : numbers[0];
+};
+const acceleratorLabel = {
+  CommandOrControl: "Ctrl",
+  Super: "Win",
+  Return: "Enter",
+  Up: "Arrow Up",
+  Down: "Arrow Down",
+  Left: "Arrow Left",
+  Right: "Arrow Right",
+};
+const formatAccelerator = (accelerator, separator = " + ") =>
+  String(accelerator || "")
+    .split("+")
+    .filter(Boolean)
+    .map((token) => acceleratorLabel[token] || token)
+    .join(separator);
+const modifierTokens = ["CommandOrControl", "Alt", "Shift", "Super"];
+const modifierCodeToken = (code) => {
+  if (code.startsWith("Control")) return "CommandOrControl";
+  if (code.startsWith("Alt")) return "Alt";
+  if (code.startsWith("Shift")) return "Shift";
+  if (code.startsWith("Meta")) return "Super";
+  return "";
+};
+const acceleratorKeyToken = (event) => {
+  const { code, key } = event;
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^F(?:[1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+  const named = {
+    Space: "Space",
+    Tab: "Tab",
+    Backspace: "Backspace",
+    Delete: "Delete",
+    Insert: "Insert",
+    Enter: "Return",
+    Home: "Home",
+    End: "End",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+  };
+  if (named[code]) return named[code];
+  const punctuation = {
+    "+": "Plus",
+    "-": "-",
+    "=": "=",
+    ",": ",",
+    ".": ".",
+    "/": "/",
+    ";": ";",
+    "'": "'",
+    "[": "[",
+    "]": "]",
+    "\\": "\\",
+    "`": "`",
+  };
+  return punctuation[key] || "";
+};
 const values = () => ({
   recordingsFolder: $("folder").value,
   retentionDays: Number($("days").value),
+  storageCleanupMode: $("cleanup-mode").value,
+  maxDiskUsagePercent: Number($("disk-percent").value),
+  maxRawRecordingGigabytes: Number($("raw-gigabytes").value),
   clipLengthSeconds: Number($("clip-length").value),
-  clipHotkey: $("hotkey").value,
+  clipHotkey: $("hotkey").dataset.accelerator || $("hotkey").value,
   stopDelaySeconds: Number($("delay").value),
   autoRecord: $("auto").checked,
   startWithWindows: $("startup").checked,
-  obsPort: Number($("port").value),
-  obsPassword: $("password").value,
+  obsRecordingQuality: $("recording-quality").value,
+  obsResolution: $("resolution").value,
+  obsFps: Number($("fps").value),
+  obsFormat: $("format").value,
+  microphoneDeviceId: $("microphone").value,
+  microphoneVolumePercent: Number($("microphone-volume").value),
+  microphoneNoiseGateDb: Number($("microphone-noise-gate").value),
+  microphoneNvidiaNoiseRemoval: $("microphone-nvidia-noise-removal").checked,
   audioExecutables: $("audio-exes")
     .value.split(/\r?\n|,/)
     .map((x) => x.trim())
     .filter(Boolean),
   gameExecutables: state.settings.gameExecutables,
+  cdnUrl: $("cdn-url").value,
+  cdnPassword: $("cdn-password").value,
+  trimBitrate: $("trim-bitrate").value,
+  nightlyUpdates: $("nightly-updates").checked,
 });
 function render(s, fill = false) {
   state = s;
+  const updateReady = s.update?.status === "ready";
+  $("update-button").classList.toggle("hidden", !updateReady);
+  if (updateReady) {
+    const label = `Restart to install Clips ${s.update.version}`;
+    $("update-button").setAttribute("aria-label", label);
+    $("update-button").title = label;
+  }
+  $("about-version").textContent = `v${s.app?.version || "—"}`;
+  $("about-build-time").textContent = s.app?.buildTime
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(s.app.buildTime))
+    : "Unknown";
+  $("about-runtime").textContent = s.app?.runtimeReady
+    ? `v${s.app.runtimeVersion} · Ready`
+    : `v${s.app?.runtimeVersion || "—"} · Installing…`;
+  const updateStatus = {
+    checking: "Checking for updates…",
+    downloading: `Downloading ${s.update?.version || "update"}… ${s.update?.percent || 0}%`,
+    preparing: s.update?.message || `Preparing ${s.update?.version || "update"}…`,
+    ready: `${s.update?.version || "Update"} is downloaded and ready to restart.`,
+    error: s.update?.message || "The update check failed.",
+    idle: s.update?.configured ? "You’re up to date." : "Nightly updates are off.",
+  };
+  $("about-update-status").textContent = updateStatus[s.update?.status] || updateStatus.idle;
+  $("check-updates").disabled = !s.settings.nightlyUpdates || ["checking", "downloading"].includes(s.update?.status);
   const online = s.obs.connected;
-  $("connection").textContent = online ? "OBS connected" : "OBS offline";
+  $("connection").textContent = online ? "Capture engine ready" : "Capture engine offline";
   $("connection-dot").classList.toggle("online", online);
   $("record-indicator").classList.toggle("live", s.obs.recording);
   $("record").textContent = s.obs.recording
@@ -34,9 +175,11 @@ function render(s, fill = false) {
     ? s.activeGames.join(", ")
     : "Monitoring configured games";
   $("error").textContent = s.lastError
-    ? s.lastError.includes("Replay Buffer")
-      ? `${s.lastError} Restart OBS once to apply the recording profile change.`
-      : `${s.lastError} Check OBS connection settings.`
+    ? s.lastError.includes("Stop recording")
+        ? s.lastError
+      : /EPERM|EACCES|mkdir|storage/i.test(s.lastError)
+        ? `${s.lastError} Check the storage folder.`
+      : `${s.lastError} Reconnect the capture engine or restart Clips.`
     : "";
   $("error").classList.toggle("hidden", !s.lastError);
   $("game-list").innerHTML = s.settings.gameExecutables.length
@@ -48,10 +191,13 @@ function render(s, fill = false) {
         .join("")
     : '<div class="muted">No games added. Add a running game to begin.</div>';
   const recordings = s.recordings || [];
-  const replays = recordings.filter((item) => item.kind === "replay");
-  const fullRecordings = recordings.filter((item) => item.kind !== "replay");
+  const favorites = recordings.filter((item) => item.favorite);
+  const replayTotal = recordings.filter((item) => item.kind === "replay").length;
+  const recordingTotal = recordings.length - replayTotal;
+  const replays = recordings.filter((item) => item.kind === "replay" && !item.favorite);
+  const fullRecordings = recordings.filter((item) => item.kind !== "replay" && !item.favorite);
   $("library-summary").textContent = recordings.length
-    ? `${replays.length} replay${replays.length === 1 ? "" : "s"} and ${fullRecordings.length} full recording${fullRecordings.length === 1 ? "" : "s"} today.`
+    ? `${replayTotal} replay${replayTotal === 1 ? "" : "s"} and ${recordingTotal} full recording${recordingTotal === 1 ? "" : "s"} today.`
     : "Recordings from this session.";
   const renderFiles = (items, emptyTitle, emptyDetail) => items.length
     ? items.map((recording) => {
@@ -59,31 +205,98 @@ function render(s, fill = false) {
         const size = recording.bytes >= 1073741824
           ? new Intl.NumberFormat(undefined, { style: "unit", unit: "gigabyte", maximumFractionDigits: 1 }).format(recording.bytes / 1073741824)
           : new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 }).format(recording.bytes / 1048576);
-        return `<button class="recording-card" data-recording-path="${escapeHtml(recording.path)}" aria-label="Open ${escapeHtml(recording.name)}"><div class="recording-thumb" aria-hidden="true">&#9654;</div><div class="recording-meta"><strong title="${escapeHtml(recording.name)}">${escapeHtml(recording.name)}</strong><span>${time} &middot; ${size}</span></div></button>`;
+        const favoriteLabel = recording.favorite ? "Remove from favorites" : "Add to favorites";
+        const selected = selectedRecordingPaths.has(recording.path);
+        return `<article class="recording-card${recording.favorite ? " favorite" : ""}${selected ? " selected" : ""}"><button class="recording-open" data-recording-path="${escapeHtml(recording.path)}" data-recording-name="${escapeHtml(recording.name)}" aria-label="Play ${escapeHtml(recording.name)}"><span class="recording-preview"><img class="recording-thumbnail" data-thumbnail-path="${escapeHtml(recording.path)}" alt=""><i class="recording-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i><i class="recording-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i></span><span class="recording-meta"><strong title="${escapeHtml(recording.name)}">${escapeHtml(recording.name)}</strong><span>${time} &middot; ${size}</span></span></button><button class="recording-select" data-select-path="${escapeHtml(recording.path)}" aria-pressed="${selected}" aria-label="${selected ? "Deselect" : "Select"} ${escapeHtml(recording.name)}" title="${selected ? "Deselect" : "Select"}"><i></i></button><button class="recording-favorite" data-favorite-path="${escapeHtml(recording.path)}" data-favorite="${recording.favorite ? "true" : "false"}" aria-label="${favoriteLabel}" title="${favoriteLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button><div class="recording-actions"><button class="recording-delete" data-delete-path="${escapeHtml(recording.path)}" data-delete-name="${escapeHtml(recording.name)}" aria-label="Delete ${escapeHtml(recording.name)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button><button class="recording-edit" data-editing-path="${escapeHtml(recording.path)}" data-editing-name="${escapeHtml(recording.name)}" aria-label="Trim ${escapeHtml(recording.name)}" title="Trim"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="m8.7 8.3 10.3 6.2M8.7 15.7 19 9.5"/></svg></button></div></article>`;
       }).join("")
     : `<div class="empty compact"><div><strong>${emptyTitle}</strong><span>${emptyDetail}</span></div></div>`;
   $("replay-count").textContent = replays.length;
   $("recording-count").textContent = fullRecordings.length;
+  $("recent-favorite-count").textContent = favorites.length;
+  $("recent-favorites-section").classList.toggle("hidden", !favorites.length);
+  $("recent-favorite-list").innerHTML = renderFiles(favorites, "", "");
   $("replay-list").innerHTML = renderFiles(replays, "No replays yet", "Use the clip shortcut to save one.");
   $("recording-list").innerHTML = renderFiles(fullRecordings, "No full recordings", "A session appears here when recording starts.");
-  $("footer-status").textContent = s.lastClip
+  const archived = s.archivedRecordings || [];
+  const archivedFavorites = archived.filter(recording => recording.favorite);
+  const archivedOthers = archived.filter(recording => !recording.favorite);
+  const byDay = archivedOthers.reduce((groups, recording) => {
+    (groups[recording.day] ||= []).push(recording);
+    return groups;
+  }, {});
+  $("archive-favorite-count").textContent = archivedFavorites.length;
+  $("archive-favorites-section").classList.toggle("hidden", !archivedFavorites.length);
+  $("archive-favorite-list").innerHTML = renderFiles(archivedFavorites, "", "");
+  $("archive-summary").textContent = archived.length
+    ? `${archived.length} saved item${archived.length === 1 ? "" : "s"} across ${new Set(archived.map(item => item.day)).size} day${new Set(archived.map(item => item.day)).size === 1 ? "" : "s"}.`
+    : "Previous days saved on this device.";
+  $("archive-days").innerHTML = archived.length
+    ? Object.entries(byDay).map(([day, items]) => {
+        const date = new Intl.DateTimeFormat(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(`${day}T12:00:00`));
+        return `<section class="archive-day"><div class="group-title"><h3>${escapeHtml(date)}</h3><span>${items.length}</span></div><div class="recording-list">${renderFiles(items, "", "")}</div></section>`;
+      }).join("")
+    : '<div class="empty archive-empty"><div><strong>No previous days yet</strong><span>Older recordings will appear here, grouped by day.</span></div></div>';
+  loadRecordingThumbnails();
+  updateSelectionBar();
+  $("footer-status").textContent = s.autoRecordSuppressed
+    ? "Stopped until the game closes"
+    : s.lastClip
     ? `Clip saved ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(s.lastClip))}`
     : "Monitoring in background";
-  $("clip-key").textContent = s.settings.clipHotkey
-    .replace("CommandOrControl", "Ctrl")
-    .replaceAll("+", " ");
+  $("clip-key").textContent = formatAccelerator(s.settings.clipHotkey, " ");
   if (fill) {
     $("folder").value = s.settings.recordingsFolder;
     $("days").value = s.settings.retentionDays;
+    $("cleanup-mode").value = s.settings.storageCleanupMode;
+    $("disk-percent").value = s.settings.maxDiskUsagePercent;
+    $("raw-gigabytes").value = s.settings.maxRawRecordingGigabytes;
     $("clip-length").value = s.settings.clipLengthSeconds;
-    $("hotkey").value = s.settings.clipHotkey;
+    $("hotkey").dataset.accelerator = s.settings.clipHotkey;
+    $("hotkey").value = formatAccelerator(s.settings.clipHotkey);
     $("delay").value = s.settings.stopDelaySeconds;
     $("auto").checked = s.settings.autoRecord;
     $("startup").checked = s.settings.startWithWindows;
-    $("port").value = s.settings.obsPort;
-    $("password").value = s.settings.obsPassword;
+    $("recording-quality").value = s.settings.obsRecordingQuality;
+    $("resolution").value = s.settings.obsResolution;
+    $("fps").value = s.settings.obsFps;
+    $("format").value = s.settings.obsFormat;
+    $("microphone-volume").value = s.settings.microphoneVolumePercent ?? 100;
+    $("microphone-volume-value").textContent = `${s.settings.microphoneVolumePercent ?? 100}%`;
+    $("microphone-noise-gate").value = s.settings.microphoneNoiseGateDb ?? -40;
+    $("microphone-nvidia-noise-removal").checked = s.settings.microphoneNvidiaNoiseRemoval !== false;
+    updateMicrophoneNoiseGate();
+    refreshMicrophones(s.settings.microphoneDeviceId);
     $("audio-exes").value = s.settings.audioExecutables.join("\n");
+    $("cdn-url").value = s.settings.cdnUrl || "https://cdn.jss.fi";
+    $("cdn-password").value = s.settings.cdnPassword || "";
+    $("trim-bitrate").value = s.settings.trimBitrate || "original";
+    $("nightly-updates").checked = !!s.settings.nightlyUpdates;
+    updateStorageVisibility();
   }
+}
+function loadRecordingThumbnails() {
+  thumbnailObserver.disconnect();
+  document.querySelectorAll(".recording-thumbnail[data-thumbnail-path]").forEach((image) => {
+    const filePath = image.dataset.thumbnailPath;
+    if (thumbnailCache.has(filePath)) {
+      image.src = thumbnailCache.get(filePath);
+      image.classList.add("loaded");
+      return;
+    }
+    thumbnailObserver.observe(image);
+  });
+}
+function requestRecordingThumbnail(image) {
+  const filePath = image.dataset.thumbnailPath;
+  window.clips.getRecordingThumbnail(filePath).then((thumbnail) => {
+    if (!thumbnail) return;
+    thumbnailCache.set(filePath, thumbnail);
+    document.querySelectorAll(".recording-thumbnail[data-thumbnail-path]").forEach((current) => {
+      if (current.dataset.thumbnailPath !== filePath) return;
+      current.src = thumbnail;
+      current.classList.add("loaded");
+    });
+  }).catch(() => {});
 }
 const escapeHtml = (s) =>
   s.replace(
@@ -93,24 +306,144 @@ const escapeHtml = (s) =>
         c
       ],
   );
-document.querySelectorAll(".tab").forEach(
-  (b) =>
-    (b.onclick = () => {
-      document
-        .querySelectorAll(".tab,.panel")
-        .forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      $(b.dataset.tab).classList.add("active");
-    }),
-);
+let lastLibraryPage = "recent";
+function navigateToPage(page) {
+  if (page !== "settings") lastLibraryPage = page;
+  document.querySelectorAll(".page").forEach((panel) => panel.classList.remove("active"));
+  document.querySelectorAll(".nav-main").forEach((button) => {
+    button.classList.toggle("active", button.dataset.page === page);
+  });
+  $(page).classList.add("active");
+  $("primary-navigation").classList.toggle("hidden", page === "settings");
+  $("settings-navigation").classList.toggle("hidden", page !== "settings");
+  $("settings-button").classList.toggle("hidden", page === "settings");
+  $("settings-back").classList.toggle("hidden", page !== "settings");
+  $("workspace").classList.toggle("settings-open", page === "settings");
+}
+document.querySelectorAll(".nav-main").forEach((button) => {
+  button.onclick = () => navigateToPage(button.dataset.page);
+});
+$("settings-back").onclick = () => navigateToPage(lastLibraryPage);
+document.querySelectorAll(".settings-nav-item").forEach((button) => {
+  button.onclick = () => {
+    document.querySelectorAll(".settings-nav-item").forEach((item) => item.classList.remove("active"));
+    document.querySelectorAll(".settings-group").forEach((group) => group.classList.remove("active"));
+    button.classList.add("active");
+    $(`settings-${button.dataset.settingsGroup}`).classList.add("active");
+    if (button.dataset.settingsGroup === "capture") refreshMicrophones(state.settings.microphoneDeviceId);
+  };
+});
+async function refreshMicrophones(selectedId) {
+  const select = $("microphone");
+  const wanted = selectedId || select.value || "disabled";
+  try {
+    const devices = await window.clips.listMicrophones();
+    select.replaceChildren(new Option("Off", "disabled"));
+    devices.forEach(device => select.add(new Option(device.name, device.id)));
+    if (![...select.options].some(option => option.value === wanted) && wanted !== "disabled") {
+      select.add(new Option("Unavailable microphone", wanted));
+    }
+    select.value = wanted;
+    select.disabled = false;
+  } catch {
+    select.disabled = true;
+  }
+}
+const hotkeyInput = $("hotkey");
+const shortcutFeedback = $("shortcut-feedback");
+let shortcutCapturing = false;
+let shortcutPrevious = "";
+let shortcutPressedCodes = new Set();
+let shortcutCapturedTokens = new Set();
+const stopShortcutCapture = async ({ save = false, message = "Click to remap" } = {}) => {
+  const accelerator = [...modifierTokens.filter((token) => shortcutCapturedTokens.has(token)),
+    ...[...shortcutCapturedTokens].filter((token) => !modifierTokens.includes(token))].join("+");
+  shortcutCapturing = false;
+  shortcutPressedCodes.clear();
+  shortcutCapturedTokens.clear();
+  hotkeyInput.classList.remove("capturing");
+  if (!save) {
+    hotkeyInput.dataset.accelerator = shortcutPrevious;
+    hotkeyInput.value = formatAccelerator(shortcutPrevious);
+    shortcutFeedback.textContent = message;
+    await window.clips.cancelHotkeyCapture();
+    return;
+  }
+  hotkeyInput.dataset.accelerator = accelerator;
+  hotkeyInput.value = formatAccelerator(accelerator);
+  shortcutFeedback.textContent = "Saving…";
+  try {
+    render(await window.clips.saveSettings(values()), true);
+    shortcutFeedback.textContent = "Saved";
+  } catch (error) {
+    hotkeyInput.dataset.accelerator = shortcutPrevious;
+    hotkeyInput.value = formatAccelerator(shortcutPrevious);
+    shortcutFeedback.textContent = error.message || "Could not save shortcut";
+    await window.clips.cancelHotkeyCapture();
+  }
+};
+const beginShortcutCapture = async () => {
+  if (shortcutCapturing) return;
+  shortcutCapturing = true;
+  shortcutPrevious = hotkeyInput.dataset.accelerator || hotkeyInput.value;
+  shortcutPressedCodes.clear();
+  shortcutCapturedTokens.clear();
+  hotkeyInput.value = "Press shortcut…";
+  hotkeyInput.classList.add("capturing");
+  shortcutFeedback.textContent = "Release all keys to save";
+  await window.clips.beginHotkeyCapture();
+};
+hotkeyInput.addEventListener("focus", beginShortcutCapture);
+hotkeyInput.addEventListener("keydown", (event) => {
+  if (!shortcutCapturing) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.code === "Escape") {
+    stopShortcutCapture({ message: "Cancelled" });
+    hotkeyInput.blur();
+    return;
+  }
+  if (event.repeat) return;
+  shortcutPressedCodes.add(event.code);
+  const modifier = modifierCodeToken(event.code);
+  const key = modifier || acceleratorKeyToken(event);
+  if (key) shortcutCapturedTokens.add(key);
+  hotkeyInput.value = formatAccelerator(
+    [...modifierTokens.filter((token) => shortcutCapturedTokens.has(token)),
+      ...[...shortcutCapturedTokens].filter((token) => !modifierTokens.includes(token))].join("+"),
+  ) || "Press shortcut…";
+});
+hotkeyInput.addEventListener("keyup", (event) => {
+  if (!shortcutCapturing) return;
+  event.preventDefault();
+  event.stopPropagation();
+  shortcutPressedCodes.delete(event.code);
+  if (shortcutPressedCodes.size) return;
+  const primaryKeys = [...shortcutCapturedTokens].filter((token) => !modifierTokens.includes(token));
+  if (primaryKeys.length !== 1) {
+    shortcutFeedback.textContent = primaryKeys.length
+      ? "Use one main key with any modifiers"
+      : "Add a letter, number, function, or navigation key";
+    shortcutCapturedTokens.clear();
+    hotkeyInput.value = "Try again…";
+    return;
+  }
+  stopShortcutCapture({ save: true });
+  hotkeyInput.blur();
+});
+hotkeyInput.addEventListener("blur", () => {
+  if (shortcutCapturing && shortcutPressedCodes.size === 0 && shortcutCapturedTokens.size === 0) {
+    stopShortcutCapture({ message: "Cancelled" });
+  }
+});
 $("game-list").onclick = async (e) => {
   if (e.target.dataset.remove != null) {
     state.settings.gameExecutables.splice(Number(e.target.dataset.remove), 1);
-    render(await window.clippy.saveSettings(values()), true);
+    render(await window.clips.saveSettings(values()), true);
   }
 };
 $("scan").onclick = async () => {
-  const list = await window.clippy.listProcesses();
+  const list = await window.clips.listProcesses();
   $("process-picker").innerHTML = list
     .map(
       (p) =>
@@ -118,6 +451,11 @@ $("scan").onclick = async () => {
     )
     .join("");
   $("process-picker").classList.remove("hidden");
+};
+$("scan-shortcut").onclick = () => {
+  navigateToPage("settings");
+  document.querySelector('[data-settings-group="general"]').click();
+  $("scan").click();
 };
 $("process-picker").onclick = async (e) => {
   const b = e.target.closest("[data-exe]");
@@ -129,30 +467,522 @@ $("process-picker").onclick = async (e) => {
   ) {
     state.settings.gameExecutables.push(b.dataset.exe);
     $("process-picker").classList.add("hidden");
-    render(await window.clippy.saveSettings(values()), true);
+    render(await window.clips.saveSettings(values()), true);
   }
 };
 $("browse").onclick = async () => {
-  const f = await window.clippy.chooseFolder();
-  if (f) $("folder").value = f;
+  const f = await window.clips.chooseFolder();
+  if (f) {
+    $("folder").value = f;
+    render(await window.clips.saveSettings(values()), true);
+  }
 };
-$("save").onclick = async () =>
-  render(await window.clippy.saveSettings(values()), true);
+const updateMicrophoneVolumeLabel = () => {
+  $("microphone-volume-value").textContent = `${$("microphone-volume").value}%`;
+};
+$("microphone-volume").addEventListener("input", () => {
+  updateMicrophoneVolumeLabel();
+});
+const updateMicrophoneNoiseGate = () => {
+  const value = Number($("microphone-noise-gate").value);
+  $("microphone-noise-gate-value").textContent = `${value} dB`;
+  $("microphone-gate-marker").style.left = `${((value + 60) / 55) * 100}%`;
+};
+$("microphone-noise-gate").addEventListener("input", updateMicrophoneNoiseGate);
+setInterval(async () => {
+  if (!state?.obs?.connected || $("microphone").value === "disabled") {
+    $("microphone-level-fill").style.width = "0%";
+    return;
+  }
+  try {
+    const db = await window.clips.microphoneLevel();
+    $("microphone-level-fill").style.width = `${Math.max(0, Math.min(100, ((db + 60) / 60) * 100))}%`;
+  } catch {}
+}, 100);
+function updateStorageVisibility() {
+  const byDays = $("cleanup-mode").value === "days";
+  $("disk-percent-row").classList.toggle("hidden", byDays);
+  $("raw-gigabytes-row").classList.toggle("hidden", byDays);
+  $("raw-gigabytes-row").classList.toggle("last-visible", !byDays);
+  $("days-row").classList.toggle("hidden", !byDays);
+}
+$("cleanup-mode").addEventListener("change", updateStorageVisibility);
+let autoSaveTimer = null;
+let autoSaveInFlight = false;
+let autoSaveRequested = false;
+const flushAutoSave = async () => {
+  if (autoSaveInFlight) {
+    autoSaveRequested = true;
+    return;
+  }
+  autoSaveInFlight = true;
+  try {
+    render(await window.clips.saveSettings(values()));
+  } catch (error) {
+    console.error("Could not autosave settings", error);
+  } finally {
+    autoSaveInFlight = false;
+    if (autoSaveRequested) {
+      autoSaveRequested = false;
+      flushAutoSave();
+    }
+  }
+};
+const queueAutoSave = (delay = 450) => {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(flushAutoSave, delay);
+};
+$("settings").addEventListener("input", (event) => {
+  if (event.target.matches("input:not([readonly]), select, textarea")) queueAutoSave();
+});
+$("settings").addEventListener("change", (event) => {
+  if (event.target.matches("input:not([readonly]), select, textarea")) queueAutoSave(0);
+});
 $("connect").onclick = async () => {
-  await window.clippy.saveSettings(values());
-  render(await window.clippy.connect());
+  await window.clips.saveSettings(values());
+  render(await window.clips.connect());
 };
-$("record").onclick = async () => render(await window.clippy.toggleRecording());
-$("clip").onclick = async () => render(await window.clippy.saveClip());
-$("open-obs").onclick = () => window.clippy.openObs();
-$("open-folder").onclick = () => window.clippy.openFolder();
-$("library-folder").onclick = () => window.clippy.openFolder();
+$("record").onclick = async () => render(await window.clips.toggleRecording());
+$("clip").onclick = async () => render(await window.clips.saveClip());
+$("library-folder").onclick = () => window.clips.openFolder();
+$("archive-folder").onclick = () => window.clips.openLibraryFolder();
+$("update-button").onclick = async () => {
+  const button = $("update-button");
+  button.disabled = true;
+  button.classList.add("restarting");
+  button.title = "Restarting...";
+  await window.clips.installUpdate();
+};
+$("check-updates").onclick = async () => {
+  const button = $("check-updates");
+  button.disabled = true;
+  $("about-update-status").textContent = "Checking for updates…";
+  const started = await window.clips.checkForUpdates();
+  if (!started) {
+    $("about-update-status").textContent = "Nightly updates are off.";
+    button.disabled = false;
+  }
+};
+$("open-logs").onclick = () => window.clips.openLogs();
 const openRecording = async (event) => {
   const card = event.target.closest("[data-recording-path]");
-  if (card) await window.clippy.openRecording(card.dataset.recordingPath);
+  if (!card) return;
+  await openEmbeddedRecording({
+    filePath: card.dataset.recordingPath,
+    name: card.dataset.recordingName,
+    mode: "view",
+  });
 };
+const openEditor = async (event) => {
+  const button = event.target.closest("[data-editing-path]");
+  if (!button) return;
+  await openEmbeddedRecording({
+    filePath: button.dataset.editingPath,
+    name: button.dataset.editingName,
+    mode: "trim",
+  });
+};
+async function openEmbeddedRecording({ filePath, name, mode }) {
+  if ($("editor").open) return;
+  editorMode = mode;
+  editingPath = filePath;
+  $("editor").classList.toggle("viewer-mode", mode === "view");
+  $("editor").querySelector(".dialog-eyebrow").textContent = mode === "view" ? "" : "Video editor";
+  $("editor-title").textContent = mode === "view" ? "Play recording" : "Trim recording";
+  $("editor-name").textContent = name;
+  trimStart = 0;
+  trimEnd = 0;
+  mpvDuration = 0;
+  mpvCurrentTime = 0;
+  mpvPaused = true;
+  $("viewer-volume").value = "100";
+  $("editor-status").textContent = mode === "view"
+    ? "Opening in the embedded player…"
+    : "Opening the original recording in MPV…";
+  $("export-trim").disabled = false;
+  $("editor").showModal();
+  await window.clips.setModalAppearance(true);
+  try {
+    const preview = await window.clips.startMpv(editingPath, mpvStageBounds());
+    mpvDuration = preview.duration;
+    trimEnd = mpvDuration;
+    updateTimeline();
+    if (mode === "view") {
+      $("editor-status").textContent = "";
+      await window.clips.pauseMpv(false);
+      mpvPaused = false;
+      updatePlayhead();
+    } else {
+      $("editor-status").textContent = "Drag either edge to choose the part you want to keep. MPV is reading the original file.";
+    }
+    clearInterval(mpvPollTimer);
+    mpvPollTimer = setInterval(refreshMpvStatus, 150);
+  } catch (error) {
+    $("editor-status").textContent = error.message;
+  }
+}
+function mpvStageBounds() {
+  const rect = $("mpv-stage").getBoundingClientRect();
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+}
+const syncMpvBounds = () => {
+  if (editingPath && $("editor").open) window.clips.setMpvBounds(mpvStageBounds());
+};
+new ResizeObserver(syncMpvBounds).observe($("mpv-stage"));
+window.addEventListener("resize", syncMpvBounds);
+function updateTimeline() {
+  const duration = mpvDuration;
+  if (!duration) return;
+  const startPercent = trimStart / duration * 100;
+  const endPercent = trimEnd / duration * 100;
+  $("trim-start").style.left = `${startPercent}%`;
+  $("trim-end").style.left = `${endPercent}%`;
+  $("trim-selection").style.left = `${startPercent}%`;
+  $("trim-selection").style.width = `${endPercent - startPercent}%`;
+  if (document.activeElement !== $("trim-start-time")) $("trim-start-time").value = formatTimestamp(trimStart);
+  if (document.activeElement !== $("trim-end-time")) $("trim-end-time").value = formatTimestamp(trimEnd);
+  $("selection-duration").textContent = editorMode === "view"
+    ? `${shortTimestamp(duration)} total`
+    : `${shortTimestamp(trimEnd - trimStart)} selected`;
+  updatePlayhead();
+}
+function updatePlayhead() {
+  $("trim-playhead").style.left = `${mpvDuration ? mpvCurrentTime / mpvDuration * 100 : 0}%`;
+  $("playhead-time").textContent = shortTimestamp(mpvCurrentTime);
+  $("transport-play").innerHTML = mpvPaused ? playerIcons.play : playerIcons.pause;
+  $("transport-play").setAttribute("aria-label", mpvPaused ? "Play" : "Pause");
+  $("transport-play").title = mpvPaused ? "Play" : "Pause";
+}
+async function seekMpv(time) {
+  mpvCurrentTime = Math.max(0, Math.min(mpvDuration, time));
+  updatePlayhead();
+  await window.clips.seekMpv(mpvCurrentTime);
+}
+function setTimeFromPointer(event, handle = "") {
+  const timeline = $("trim-timeline");
+  const rect = timeline.getBoundingClientRect();
+  const duration = mpvDuration;
+  if (!duration || !rect.width) return;
+  const time = Math.max(0, Math.min(duration, (event.clientX - rect.left) / rect.width * duration));
+  const minimum = Math.min(.1, duration / 10);
+  if (handle === "start") {
+    trimStart = Math.min(time, trimEnd - minimum);
+    seekMpv(trimStart);
+  } else if (handle === "end") {
+    trimEnd = Math.max(time, trimStart + minimum);
+    seekMpv(trimEnd);
+  } else {
+    seekMpv(Math.max(trimStart, Math.min(trimEnd, time)));
+  }
+  updateTimeline();
+}
+["trim-start", "trim-end"].forEach((id) => {
+  $(id).addEventListener("pointerdown", (event) => {
+    draggingHandle = id === "trim-start" ? "start" : "end";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setTimeFromPointer(event, draggingHandle);
+  });
+  $(id).addEventListener("pointermove", (event) => {
+    if (draggingHandle) setTimeFromPointer(event, draggingHandle);
+  });
+  $(id).addEventListener("pointerup", () => { draggingHandle = ""; });
+});
+$("trim-timeline").addEventListener("pointerdown", (event) => {
+  if (!event.target.closest(".trim-handle")) {
+    draggingPlayhead = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setTimeFromPointer(event);
+  }
+});
+$("trim-timeline").addEventListener("pointermove", (event) => {
+  if (draggingPlayhead) setTimeFromPointer(event);
+});
+$("trim-timeline").addEventListener("pointerup", () => { draggingPlayhead = false; });
+$("trim-timeline").addEventListener("pointercancel", () => { draggingPlayhead = false; });
+const togglePlayback = async () => {
+  if (mpvPaused && (mpvCurrentTime < trimStart || mpvCurrentTime >= trimEnd)) await seekMpv(trimStart);
+  await window.clips.toggleMpv();
+  mpvPaused = !mpvPaused;
+  updatePlayhead();
+};
+$("transport-play").onclick = togglePlayback;
+$("viewer-volume").addEventListener("input", event => {
+  window.clips.setMpvVolume(Number(event.target.value)).catch(() => {});
+});
+$("viewer-fullscreen").onclick = async () => {
+  await window.clips.openMpvFullscreen(editingPath);
+  $("editor").close();
+};
+function updateFullscreenButton() {
+  $("viewer-fullscreen").innerHTML = playerIcons.fullscreen;
+  $("viewer-fullscreen").setAttribute("aria-label", "Open in MPV fullscreen");
+  $("viewer-fullscreen").title = "Open in MPV fullscreen";
+}
+updatePlayhead();
+updateFullscreenButton();
+function applyTypedTime(which) {
+  const input = $(which === "start" ? "trim-start-time" : "trim-end-time");
+  const time = parseTimestamp(input.value);
+  if (!Number.isFinite(time)) {
+    input.value = formatTimestamp(which === "start" ? trimStart : trimEnd);
+    $("editor-status").textContent = "Use HH:MM:SS, for example 00:01:23.50.";
+    return;
+  }
+  if (which === "start") {
+    trimStart = Math.max(0, Math.min(time, trimEnd - .01));
+    seekMpv(trimStart);
+  } else {
+    trimEnd = Math.min(mpvDuration, Math.max(time, trimStart + .01));
+    seekMpv(trimEnd);
+  }
+  input.value = formatTimestamp(which === "start" ? trimStart : trimEnd);
+  updateTimeline();
+}
+["start", "end"].forEach(which => {
+  const input = $(which === "start" ? "trim-start-time" : "trim-end-time");
+  input.addEventListener("change", () => applyTypedTime(which));
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter") { event.preventDefault(); applyTypedTime(which); input.blur(); }
+  });
+});
+async function refreshMpvStatus() {
+  try {
+    const status = await window.clips.mpvStatus();
+    if (!status.running) return;
+    mpvDuration = status.duration || mpvDuration;
+    mpvCurrentTime = status.currentTime;
+    mpvPaused = status.paused;
+    if (!mpvPaused && mpvCurrentTime >= trimEnd) {
+      await window.clips.pauseMpv(true);
+      mpvPaused = true;
+      await seekMpv(trimStart);
+    } else {
+      updatePlayhead();
+    }
+  } catch {
+    clearInterval(mpvPollTimer);
+    mpvPollTimer = null;
+  }
+}
+$("export-trim").onclick = async () => {
+  const button = $("export-trim");
+  button.disabled = true;
+  $("export-progress").classList.remove("hidden");
+  $("export-progress").setAttribute("aria-valuenow", "0");
+  $("export-progress").querySelector("i").style.width = "0%";
+  $("export-progress").querySelector("span").textContent = "Starting...";
+  $("editor-status").textContent = "Exporting trimmed clip…";
+  try {
+    if (!Number.isFinite(trimStart) || !Number.isFinite(trimEnd) || trimEnd <= trimStart) throw new Error("Choose a valid range.");
+    const result = await window.clips.trimRecording(editingPath, trimStart, trimEnd, $("trim-bitrate").value);
+    render(result.state);
+    $("editor-status").textContent = `Saved ${result.outputPath.split(/[\\/]/).pop()}`;
+    button.textContent = "Done";
+    setTimeout(() => $("editor").close(), 650);
+  } catch (error) {
+    $("editor-status").textContent = error.message;
+    button.disabled = false;
+  }
+};
+window.clips.onTrimProgress(progress => {
+  const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+  $("export-progress").setAttribute("aria-valuenow", String(Math.round(percent)));
+  $("export-progress").querySelector("i").style.width = `${percent}%`;
+  $("export-progress").querySelector("span").textContent = `${Math.round(percent)}% | ${shortTimestamp(progress.seconds)} / ${shortTimestamp(progress.duration)}`;
+});
+window.clips.onMpvFrame(frame => {
+  if (!editingPath || !$("editor").open) return;
+  const canvas = $("mpv-canvas");
+  if (canvas.width !== frame.width || canvas.height !== frame.height) {
+    canvas.width = frame.width;
+    canvas.height = frame.height;
+  }
+  const pixels = new Uint8ClampedArray(frame.pixels);
+  canvas.getContext("2d").putImageData(new ImageData(pixels, frame.width, frame.height), 0, 0);
+  $("mpv-loading").classList.add("hidden");
+});
+$("mpv-canvas").addEventListener("click", togglePlayback);
+const uploadRecording = async (event) => {
+  const button = event.target.closest("[data-upload-path]");
+  if (!button || button.disabled) return;
+  const originalHtml = button.innerHTML;
+  const originalLabel = button.getAttribute("aria-label");
+  button.disabled = true;
+  button.classList.add("busy");
+  button.setAttribute("aria-label", "Uploading");
+  button.title = "Uploading…";
+  try {
+    const { link } = await window.clips.uploadRecording(button.dataset.uploadPath);
+    await navigator.clipboard.writeText(link);
+    button.classList.remove("busy");
+    button.classList.add("success");
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+    button.setAttribute("aria-label", "Link copied");
+    button.title = link;
+    setTimeout(() => {
+      button.innerHTML = originalHtml;
+      button.classList.remove("success");
+      button.setAttribute("aria-label", originalLabel);
+      button.title = "Upload";
+      button.disabled = false;
+    }, 2500);
+  } catch (error) {
+    button.classList.remove("busy");
+    button.classList.add("failed");
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>';
+    button.setAttribute("aria-label", "Upload failed");
+    button.title = error.message;
+    setTimeout(() => {
+      button.innerHTML = originalHtml;
+      button.classList.remove("failed");
+      button.setAttribute("aria-label", originalLabel);
+      button.title = "Upload";
+      button.disabled = false;
+    }, 3000);
+  }
+};
+const toggleFavorite = async (event) => {
+  const button = event.target.closest("[data-favorite-path]");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  try {
+    render(await window.clips.setRecordingFavorite(button.dataset.favoritePath, button.dataset.favorite !== "true"));
+  } catch (error) {
+    button.disabled = false;
+    button.title = error.message;
+  }
+};
+function updateSelectionBar() {
+  const count = selectedRecordingPaths.size;
+  $("selection-count").textContent = `${count} selected`;
+  $("selection-bar").classList.toggle("hidden", !count);
+}
+function toggleRecordingSelection(event) {
+  const button = event.target.closest("[data-select-path]");
+  if (!button) return;
+  const filePath = button.dataset.selectPath;
+  if (selectedRecordingPaths.has(filePath)) selectedRecordingPaths.delete(filePath);
+  else selectedRecordingPaths.add(filePath);
+  document.querySelectorAll("[data-select-path]").forEach(current => {
+    if (current.dataset.selectPath !== filePath) return;
+    const selected = selectedRecordingPaths.has(filePath);
+    current.setAttribute("aria-pressed", String(selected));
+    current.title = selected ? "Deselect" : "Select";
+    current.closest(".recording-card")?.classList.toggle("selected", selected);
+  });
+  updateSelectionBar();
+}
+function requestDelete(filePaths, name = "") {
+  pendingDeletePaths = [...new Set(filePaths)];
+  if (!pendingDeletePaths.length) return;
+  const multiple = pendingDeletePaths.length > 1;
+  $("delete-title").textContent = multiple ? `Delete ${pendingDeletePaths.length} recordings?` : "Delete recording?";
+  $("delete-detail").textContent = multiple
+    ? "These files will be permanently deleted. This cannot be undone."
+    : `“${name || pendingDeletePaths[0].split(/[\\/]/).pop()}” will be permanently deleted. This cannot be undone.`;
+  $("delete-error").classList.add("hidden");
+  $("confirm-delete").disabled = false;
+  $("confirm-delete").textContent = multiple ? `Delete ${pendingDeletePaths.length}` : "Delete";
+  $("delete-dialog").showModal();
+  window.clips.setModalAppearance(true);
+}
+function requestSingleDelete(event) {
+  const button = event.target.closest("[data-delete-path]");
+  if (button) requestDelete([button.dataset.deletePath], button.dataset.deleteName);
+}
+$("selection-clear").onclick = () => {
+  selectedRecordingPaths.clear();
+  document.querySelectorAll(".recording-card.selected").forEach(card => card.classList.remove("selected"));
+  document.querySelectorAll("[data-select-path]").forEach(button => button.setAttribute("aria-pressed", "false"));
+  updateSelectionBar();
+};
+$("selection-delete").onclick = () => requestDelete([...selectedRecordingPaths]);
+$("confirm-delete").onclick = async () => {
+  const button = $("confirm-delete");
+  button.disabled = true;
+  button.textContent = "Deleting…";
+  try {
+    const deleted = [...pendingDeletePaths];
+    const nextState = await window.clips.deleteRecordings(deleted);
+    deleted.forEach(filePath => {
+      selectedRecordingPaths.delete(filePath);
+      thumbnailCache.delete(filePath);
+    });
+    pendingDeletePaths = [];
+    $("delete-dialog").close();
+    render(nextState);
+  } catch (error) {
+    $("delete-error").textContent = error.message;
+    $("delete-error").classList.remove("hidden");
+    button.disabled = false;
+    button.textContent = "Delete";
+  }
+};
+$("delete-dialog").addEventListener("close", () => {
+  pendingDeletePaths = [];
+  window.clips.setModalAppearance(false);
+});
+let arrowSeekDelay = null;
+let arrowSeekInterval = null;
+function stopArrowSeeking() {
+  clearTimeout(arrowSeekDelay);
+  clearInterval(arrowSeekInterval);
+  arrowSeekDelay = null;
+  arrowSeekInterval = null;
+}
+function seekByArrow(direction) { seekMpv(mpvCurrentTime + direction * 5).catch(() => {}); }
+document.addEventListener("keydown", event => {
+  if ($("editor").open && event.code === "Space"
+    && !event.target.closest("input, textarea, select, button, [contenteditable]") && !event.repeat) {
+    event.preventDefault();
+    togglePlayback().catch(() => {});
+    return;
+  }
+  if (!$("editor").open || !["ArrowLeft", "ArrowRight"].includes(event.key)
+    || event.target.closest("input, textarea, select") || event.repeat) return;
+  event.preventDefault();
+  stopArrowSeeking();
+  const direction = event.key === "ArrowLeft" ? -1 : 1;
+  seekByArrow(direction);
+  arrowSeekDelay = setTimeout(() => {
+    arrowSeekInterval = setInterval(() => seekByArrow(direction), 160);
+  }, 380);
+});
+document.addEventListener("keyup", event => {
+  if (["ArrowLeft", "ArrowRight"].includes(event.key)) stopArrowSeeking();
+});
+window.addEventListener("blur", stopArrowSeeking);
+$("editor").addEventListener("close", () => {
+  stopArrowSeeking();
+  window.clips.setModalAppearance(false);
+  clearInterval(mpvPollTimer);
+  mpvPollTimer = null;
+  window.clips.closeMpv();
+  $("export-trim").textContent = "Export trimmed clip";
+  $("export-progress").classList.add("hidden");
+  $("mpv-loading").classList.remove("hidden");
+  $("editor").classList.remove("viewer-mode");
+  editorMode = "trim";
+  editingPath = "";
+});
 $("recording-list").onclick = openRecording;
 $("replay-list").onclick = openRecording;
-window.clippy.onState((s) => render(s));
-window.clippy.getState().then((s) => render(s, true));
-setInterval(() => window.clippy.getState().then((s) => render(s)), 2000);
+$("recording-list").addEventListener("click", openEditor);
+$("replay-list").addEventListener("click", openEditor);
+document.addEventListener("click", toggleFavorite);
+document.addEventListener("click", toggleRecordingSelection);
+document.addEventListener("click", requestSingleDelete);
+const archiveDays = $("archive-days");
+archiveDays.addEventListener("click", openRecording);
+archiveDays.addEventListener("click", openEditor);
+$("recent-favorite-list").onclick = openRecording;
+$("recent-favorite-list").addEventListener("click", openEditor);
+$("archive-favorite-list").onclick = openRecording;
+$("archive-favorite-list").addEventListener("click", openEditor);
+window.clips.onState((s) => render(s));
+window.clips.getState().then((s) => render(s, true));
+// Main-process state events keep the UI current. Only recover state after a
+// suspended/hidden renderer becomes visible instead of polling while in tray.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') window.clips.getState().then(render);
+});
