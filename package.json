@@ -1,6 +1,6 @@
 {
   "name": "clips",
-  "version": "0.1.72",
+  "version": "0.1.73",
   "description": "Automatic game recording and clipping with a private libobs capture engine",
   "author": "jss",
   "main": "src/main.js",
@@ -8,6 +8,7 @@
   "scripts": {
     "start": "electron .",
     "start:update-ready": "set CLIPS_UPDATE_MOCK=1&&electron .",
+    "setup:prerequisites": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-prerequisites.ps1",
     "stage:obs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-obs.ps1",
     "stage:libobs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-libobs.ps1",
     "stage:ffmpeg": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-ffmpeg.ps1",

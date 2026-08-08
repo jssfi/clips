@@ -1,12 +1,20 @@
-param(
-    [string]$Source = 'C:\Program Files\obs-studio'
-)
+param([string]$Source = '')
 
 $ErrorActionPreference = 'Stop'
 $destination = Join-Path $PSScriptRoot '..\vendor\obs-studio'
 
-if (-not (Test-Path -LiteralPath (Join-Path $Source 'bin\64bit\obs64.exe'))) {
-    throw "OBS Studio was not found at: $Source"
+if (-not $Source) {
+    $installed = 'C:\Program Files\obs-studio'
+    if (Test-Path -LiteralPath (Join-Path $destination 'bin\64bit\obs64.exe')) {
+        Write-Host "OBS Studio is already staged at $destination"
+        return
+    } elseif (Test-Path -LiteralPath (Join-Path $installed 'bin\64bit\obs64.exe')) {
+        $Source = $installed
+    }
+}
+
+if (-not $Source -or -not (Test-Path -LiteralPath (Join-Path $Source 'bin\64bit\obs64.exe'))) {
+    throw 'OBS Studio was not found. Run npm run setup:prerequisites or pass -Source.'
 }
 
 New-Item -ItemType Directory -Force -Path $destination | Out-Null

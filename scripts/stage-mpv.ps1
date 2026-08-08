@@ -1,13 +1,20 @@
-param(
-    [string]$Source = (Join-Path $env:USERPROFILE 'Downloads\mpv-x86_64-20250912-git-d837c43\mpv.exe')
-)
+param([string]$Source = '')
 
 $ErrorActionPreference = 'Stop'
 $destinationDirectory = Join-Path $PSScriptRoot '..\vendor\mpv'
 $destination = Join-Path $destinationDirectory 'mpv.exe'
 
-if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) {
-    throw "MPV was not found at: $Source. Pass -Source with the path to the mpv.exe that should ship with Clips."
+if (-not $Source) {
+    if (Test-Path -LiteralPath $destination -PathType Leaf) {
+        Write-Host "MPV is already staged at $destination"
+        return
+    }
+    $command = Get-Command mpv.exe -ErrorAction SilentlyContinue
+    if ($command) { $Source = $command.Source }
+}
+
+if (-not $Source -or -not (Test-Path -LiteralPath $Source -PathType Leaf)) {
+    throw 'MPV was not found. Run npm run setup:prerequisites or pass -Source.'
 }
 
 New-Item -ItemType Directory -Force -Path $destinationDirectory | Out-Null

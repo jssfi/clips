@@ -56,10 +56,30 @@ Clips is a Windows tray app with a private native capture engine built directly 
 
 ## Run locally
 
-1. Run `npm install`.
-2. Run `npm run stage:libobs` and `npm run build:capture-host` once to prepare the native development runtime.
-3. Run `npm start` and choose running games in Clips.
-4. Configure quality, resolution, frame rate, format, and replay length in Clips.
+Clips currently targets 64-bit Windows. A source build needs:
+
+- Windows 10 or newer on x64.
+- Git and Node.js LTS.
+- Visual Studio 2022 Build Tools with the Desktop development with C++ workload.
+- OBS Studio 31.1.2 runtime and SDK sources.
+- FFmpeg, MPV, and libmpv development files.
+
+The repository includes a setup script that installs missing development tools through WinGet, downloads pinned OBS/FFmpeg/MPV/libmpv archives, verifies their SHA-256 checksums, stages them under the ignored `vendor/` directory, and builds the native hosts:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-prerequisites.ps1
+```
+
+The Visual Studio installation is large and can require elevation. If the script installs Node or Git, open a new terminal afterward so the updated `PATH` is available.
+
+Then install the JavaScript dependencies and start Clips:
+
+```powershell
+npm install
+npm start
+```
+
+Once npm dependencies are installed, the setup script is also available as `npm run setup:prerequisites`. Pass `-Force` directly to the PowerShell script to redownload/restage the pinned media runtime, or `-SkipToolInstall` to require all system tools to already be installed.
 
 The capture host creates private game-capture and application-audio sources for the selected game and configured audio executables. Desktop and browser audio are not mixed unless their executable is explicitly selected.
 
@@ -104,9 +124,9 @@ $env:CLIPS_UPDATE_URL = 'http://127.0.0.1:8787'
 
 The update icon appears after the newer installer has downloaded. The local server supports byte ranges so this exercises the same blockmap/differential download path as production.
 
-Use `npm run stage:obs -- -Source D:\path\to\obs-studio`, followed by `npm run stage:libobs`, when the source OBS installation is elsewhere. The staging step copies only libobs, its Direct3D backend, capture/audio plugins, muxers, and encoders; it excludes `obs64.exe`, the OBS frontend, WebSocket, browser, and Qt UI. Use `npm run stage:mpv -- -Source D:\path\to\mpv.exe` to select the exact MPV build shipped with Clips.
+Use `npm run stage:obs -- -Source D:\path\to\obs-studio`, followed by `npm run stage:libobs`, to stage a different OBS installation. The staging step copies only libobs, its Direct3D backend, capture/audio plugins, muxers, and encoders; it excludes `obs64.exe`, the OBS frontend, WebSocket, browser, and Qt UI. Use `npm run stage:ffmpeg -- -Source D:\path\to\ffmpeg.exe` or `npm run stage:mpv -- -Source D:\path\to\mpv.exe` to select alternate media builds.
 
-The third-party libobs, FFmpeg, and MPV binaries are intentionally excluded from Git history.
+Third-party media binaries are excluded from Git to keep the repository lightweight. They are bundled with published bootstrap installers and retained across slim updates. Source builds obtain verified copies through `scripts/install-prerequisites.ps1` instead of Git history.
 
 ## Retention safety
 
