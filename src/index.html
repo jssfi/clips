@@ -255,6 +255,12 @@
                 <div class="settings-row"><span><strong>Diagnostic log</strong><small>Keeps the most recent hour, capped at 5 MB.</small></span><button id="open-logs" class="button outline" type="button">Show log file</button></div>
               </div>
             </section>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Privacy</h2><p>Optional anonymous telemetry for official builds.</p></div>
+              <div class="settings-block">
+                <label class="settings-row" for="telemetry-mode"><span><strong>Telemetry</strong><small id="telemetry-status">Choose what Clips may send.</small></span><select id="telemetry-mode" name="telemetryMode"><option value="diagnostics">Diagnostics and error logs</option><option value="version">Version only</option><option value="off">Nothing</option></select></label>
+              </div>
+            </section>
           </div>
         </div>
       </section>

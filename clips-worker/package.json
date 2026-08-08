@@ -1,9 +1,9 @@
 {
-  "name": "jss-clips-update-worker",
+  "name": "jss-clips-front-door-worker",
   "private": true,
   "type": "module",
   "scripts": {
-    "config": "node ../scripts/write-worker-config.js update-worker",
+    "config": "node ../scripts/write-worker-config.js clips-worker",
     "check": "npm run config && wrangler types && tsc --noEmit && wrangler deploy --dry-run",
     "deploy": "npm run config && wrangler deploy --minify",
     "types": "npm run config && wrangler types"

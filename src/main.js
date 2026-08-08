@@ -15,6 +15,7 @@ const { trayIconPng } = require('./tray-icon');
 const { MPV_QUIT_ON_FULLSCREEN_EXIT_SCRIPT, mpvFullscreenArgs } = require('./mpv-fullscreen');
 const { createLogger } = require('./logger');
 const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
+const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./telemetry');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
 app.setPath('userData', path.join(app.getPath('appData'), 'Clips'));
@@ -23,7 +24,9 @@ const gotSingleInstanceLock = !redirectedToActiveVersion && app.requestSingleIns
 if (!gotSingleInstanceLock) app.quit();
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_UPDATE_URL = 'https://cdn.clips.jss.fi';
+let releaseConfig = {};
+try { releaseConfig = require('./release-config.json'); } catch {}
+const DEFAULT_UPDATE_URL = String(releaseConfig.updateUrl || '');
 const DEFAULT_NVAFX_SDK_DIR = 'C:\\Program Files\\NVIDIA Corporation\\NVIDIA Audio Effects SDK';
 if (!process.env.NVAFX_SDK_DIR && fs.existsSync(path.join(DEFAULT_NVAFX_SDK_DIR, 'NVAudioEffects.dll'))) {
   // Staged updates relaunch from the old process, which does not inherit newly
@@ -41,7 +44,7 @@ const DEFAULTS = {
   microphoneDeviceId: 'disabled', microphoneVolumePercent: 100, microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
   cdnUrl: 'https://cdn.jss.fi', cdnPassword: '', trimBitrate: 'original',
-  nightlyUpdates: false
+  nightlyUpdates: false, telemetryMode: 'pending'
 };
 
 let win, toastWin, tray, settings, monitorTimer, stopTimer, toastHideTimer, microphoneVolumePersistTimer, connectPromise, mediaServer, mediaPort = 0, autoRecordSuppressed = false, lastError = '', activeGames = [], runningApps = [], lastClip = '', sessionDate = '', toastReady = false, pendingToast = null;
@@ -58,6 +61,9 @@ let updateConfigurationGeneration = 0;
 let stagedUpdater = null;
 let runtimeSetupPromise = Promise.resolve();
 const logger = createLogger({ directory: path.join(app.getPath('userData'), 'logs') });
+const telemetryEndpoint = configuredEndpoint();
+let telemetry = null;
+let systemInformation = null;
 const obs = new ObsController(() => broadcast(), logger);
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 const favoritesPath = () => path.join(app.getPath('userData'), 'favorites.json');
@@ -755,6 +761,7 @@ async function monitor() {
 function setError(error) {
   lastError = error?.message || String(error);
   logger.error('application error', { message: lastError, stack: error?.stack });
+  telemetry?.reportError(error).catch(() => {});
   broadcast();
 }
 async function tryConnect() {
@@ -782,7 +789,56 @@ async function tryConnect() {
   })();
   return connectPromise;
 }
-async function state() { return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings: recentRecordings(), archivedRecordings: archivedRecordings(), lastError, lastClip, captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: app.getVersion(), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()) }, update: updateState }; }
+async function state() { return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings: recentRecordings(), archivedRecordings: archivedRecordings(), lastError, lastClip, captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: app.getVersion(), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()) }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState }; }
+
+async function collectSystemInformation() {
+  let gpu = 'Unknown';
+  try {
+    const info = await app.getGPUInfo('basic');
+    gpu = info.gpuDevice?.find(device => device.active)?.deviceString || info.gpuDevice?.[0]?.deviceString || 'Unknown';
+  } catch {}
+  return {
+    platform: process.platform,
+    architecture: process.arch,
+    windowsRelease: os.release(),
+    cpu: os.cpus()[0]?.model || 'Unknown',
+    gpu,
+    ramGiB: Math.round(os.totalmem() / 1024 ** 3)
+  };
+}
+
+async function requestTelemetryPreference() {
+  if (!telemetryEndpoint || settings.telemetryMode !== 'pending') return;
+  const result = await dialog.showMessageBox({
+    type: 'question',
+    title: 'Help improve Clips?',
+    message: 'Choose what Clips may send',
+    detail: 'Diagnostics sends anonymous system specs and a sanitized log excerpt only when an error occurs. Version only sends a random installation ID and Clips/runtime versions. You can change this later in Settings.',
+    buttons: ['Diagnostics and error logs', 'Version only', 'Nothing'],
+    defaultId: 1,
+    cancelId: 2,
+    noLink: true
+  });
+  settings.telemetryMode = ['diagnostics', 'version', 'off'][result.response] || 'off';
+  persist();
+}
+
+function configureTelemetry({ sendStartup = false } = {}) {
+  telemetry = null;
+  if (!telemetryEndpoint || !['diagnostics', 'version'].includes(settings.telemetryMode)) return;
+  const installationId = loadInstallationId(path.join(app.getPath('userData'), 'telemetry.json'));
+  telemetry = createTelemetry({
+    endpoint: telemetryEndpoint,
+    mode: settings.telemetryMode,
+    installationId,
+    appVersion: app.getVersion(),
+    runtimeVersion: RUNTIME_VERSION,
+    system: systemInformation,
+    logger,
+    redact: [app.getPath('userData'), os.homedir(), settings.recordingsFolder]
+  });
+  if (sendStartup) telemetry.sendStartup().catch(() => {});
+}
 function trayIcon(recording) {
   return nativeImage.createFromBuffer(trayIconPng(recording));
 }
@@ -968,6 +1024,8 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  systemInformation = await collectSystemInformation();
+  logger.info('system information', systemInformation);
   settings = loadSettings();
   loadFavorites();
   persist();
@@ -978,6 +1036,8 @@ app.whenReady().then(async () => {
     recordingsFolder: settings.recordingsFolder,
     microphoneDeviceId: settings.microphoneDeviceId
   });
+  await requestTelemetryPreference();
+  configureTelemetry({ sendStartup: true });
   app.setLoginItemSettings({ openAtLogin: !!settings.startWithWindows, args: ['--hidden'] });
   createWindow(); createOverlayWindow(); registerHotkey(); configureUpdates();
   if (app.isPackaged) {
@@ -995,8 +1055,8 @@ app.whenReady().then(async () => {
   broadcast();
 });
 app.on('second-instance', showMainWindow);
-process.on('uncaughtExceptionMonitor', error => logger.error('uncaught exception', { message: error.message, stack: error.stack }));
-process.on('unhandledRejection', error => logger.error('unhandled rejection', { message: error?.message || String(error), stack: error?.stack }));
+process.on('uncaughtExceptionMonitor', error => { logger.error('uncaught exception', { message: error.message, stack: error.stack }); telemetry?.reportError(error).catch(() => {}); });
+process.on('unhandledRejection', error => { logger.error('unhandled rejection', { message: error?.message || String(error), stack: error?.stack }); telemetry?.reportError(error).catch(() => {}); });
 app.on('will-quit', () => { logger.info('application quitting'); if (microphoneVolumePersistTimer) persist(); logger.maintain(); clearTimeout(toastHideTimer); clearTimeout(microphoneVolumePersistTimer); clearTimeout(monitorTimer); clearTimeout(updateCheckTimeout); clearInterval(updateCheckTimer); obs.disconnect().catch(() => {}); closeMpvSession(); mediaServer?.close(); globalShortcut.unregisterAll(); });
 
 ipcMain.handle('state:get', state);
@@ -1046,6 +1106,7 @@ ipcMain.handle('settings:save', async (_e, next) => {
     const updated = normalizeSettingsUpdate(previous, next);
     ensureDirectory(updated.recordingsFolder);
     const nightlyUpdatesChanged = updated.nightlyUpdates !== previous.nightlyUpdates;
+    const telemetryModeChanged = updated.telemetryMode !== previous.telemetryMode;
     const recordingSettingsChanged = ['obsRecordingQuality', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
       .some(key => updated[key] !== previous[key]);
     const microphoneVolumeChanged = updated.microphoneVolumePercent !== previous.microphoneVolumePercent;
@@ -1075,6 +1136,7 @@ ipcMain.handle('settings:save', async (_e, next) => {
     app.setLoginItemSettings({ openAtLogin: !!settings.startWithWindows, args: ['--hidden'] });
     registerHotkey();
     if (nightlyUpdatesChanged) configureUpdates();
+    if (telemetryModeChanged) configureTelemetry({ sendStartup: true });
     if (obs.connected && recordingSettingsChanged) {
       await obs.applyRecordingSettings({
         quality: settings.obsRecordingQuality,

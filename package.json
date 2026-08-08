@@ -1,6 +1,6 @@
 {
   "name": "clips",
-  "version": "0.1.73",
+  "version": "0.1.75",
   "description": "Automatic game recording and clipping with a private libobs capture engine",
   "author": "jss",
   "main": "src/main.js",
@@ -17,7 +17,7 @@
     "build:mpv-host": "scripts\\build-mpv-host.cmd",
     "build:capture-host": "scripts\\build-capture-host.cmd",
     "build:info": "node scripts/write-build-info.js",
-    "check": "node --check src/main.js && node --check src/obs.js && node --check src/runtime.js && node --check src/updater.js && node --check src/preload.js && node --check src/renderer.js && node --check src/logger.js && node --check src/settings.js && node --check scripts/write-build-info.js && node --check scripts/local-update-server.js && node --check scripts/generate-app-icon.js && node --test test/*.test.js",
+    "check": "node --check src/main.js && node --check src/obs.js && node --check src/runtime.js && node --check src/updater.js && node --check src/telemetry.js && node --check src/preload.js && node --check src/renderer.js && node --check src/logger.js && node --check src/settings.js && node --check scripts/env.js && node --check scripts/write-worker-config.js && node --check scripts/write-build-info.js && node --check scripts/local-update-server.js && node --check scripts/generate-app-icon.js && node --test test/*.test.js && npm --prefix update-worker run check && npm --prefix telemetry-worker run check && npm --prefix clips-worker run check",
     "dist": "npm run build:info && electron-builder --config electron-builder.update.json --win nsis",
     "dist:staged": "npm run build:info && electron-builder --config electron-builder.staged.json --win dir && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-staged-update.ps1",
     "dist:release": "npm run dist && npm run dist:staged",

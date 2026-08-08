@@ -1,6 +1,6 @@
 param(
     [string]$Version,
-    [string]$Bucket = 'jss-clips-updates'
+    [string]$Bucket
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +8,19 @@ $workerRoot = Split-Path $PSScriptRoot -Parent
 $projectRoot = Split-Path $workerRoot -Parent
 $dist = Join-Path $projectRoot 'dist'
 $wrangler = Join-Path $workerRoot 'node_modules\.bin\wrangler.cmd'
+$envFile = Join-Path $projectRoot '.env'
+if (-not $Bucket -and (Test-Path -LiteralPath $envFile)) {
+    foreach ($line in Get-Content -LiteralPath $envFile) {
+        if ($line -match '^\s*CLIPS_UPDATE_BUCKET\s*=\s*(.+?)\s*$') {
+            $Bucket = $Matches[1].Trim('"', "'")
+            break
+        }
+    }
+}
+if (-not $Bucket) { throw 'CLIPS_UPDATE_BUCKET is missing. Copy .env.example to .env and configure it.' }
+
+& node (Join-Path $projectRoot 'scripts\write-worker-config.js') update-worker
+if ($LASTEXITCODE -ne 0) { throw 'Could not generate the update Worker configuration.' }
 
 if (-not $Version) {
     $Version = (Get-Content (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json).version

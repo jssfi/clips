@@ -41,12 +41,16 @@ Clips is a Windows tray app with a private native capture engine built directly 
 
 - The repository includes the Cloudflare Worker and R2 publishing workflow used for application updates.
 - Update delivery includes caching, metadata validation, byte-range support, and automatic cleanup of superseded artifacts.
-- Nightly builds are distributed through `cdn.clips.jss.fi`.
+- Nightly builds are distributed through `clips.jss.fi/cdn/`; the previous `cdn.clips.jss.fi` hostname remains available for older installations.
 
 ## Privacy
 
 - Electron renderers use sandboxing, context isolation, navigation blocking, and a restrictive Content Security Policy.
 - Recording paths are validated, and local media URLs use random authentication tokens.
+- Official builds ask before sending optional telemetry. **Version only** sends a locally generated random installation UUID plus the Clips and media-runtime versions, allowing aggregate counts of installations on each release. **Diagnostics and error logs** additionally sends Windows architecture/version, CPU, GPU, RAM, and a sanitized recent log excerpt only when an error occurs. **Nothing** sends no telemetry.
+- The UUID is not tied to an account or other identity. The ingestion Worker does not store IP addresses or request headers, though Cloudflare necessarily processes connection metadata while serving the request.
+- Source builds have telemetry disabled unless the person packaging the app supplies a private build-time endpoint. The endpoint is never provided by the checked-in application configuration.
+- Official telemetry is sent through `clips.jss.fi/telemetry/`. The old dedicated hostname remains a compatibility alias, and `clips.jss.fi/app/` is reserved for the project site.
 
 ## Tests and releases
 
@@ -59,6 +63,12 @@ Clips is a Windows tray app with a private native capture engine built directly 
 Clips targets 64-bit Windows. The repository includes an automated prerequisite installer for the native toolchain and pinned media runtimes.
 
 See [Development and testing](docs/development.md) for source setup, packaging, integration tests, update-flow testing, and alternate runtime staging.
+
+Copy `.env.example` to `.env` to configure official build URLs and Cloudflare Worker resources. The real `.env`, generated Worker configurations, and packaged release configuration are ignored by Git; without them, source builds do not send telemetry.
+
+## License
+
+Original Clips code is available under the MIT License. Third-party components and source governed by another license retain their respective terms; see [LICENSE](LICENSE).
 
 ## Retention safety
 

@@ -14,7 +14,8 @@ const base = {
   microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
   audioExecutables: ['Discord.exe'],
-  nightlyUpdates: true
+  nightlyUpdates: true,
+  telemetryMode: 'version'
 };
 
 test('storage and microphone settings are normalized for persistence', () => {
@@ -28,6 +29,11 @@ test('storage and microphone settings are normalized for persistence', () => {
   assert.equal(settings.microphoneVolumePercent, 100);
   assert.equal(settings.microphoneNoiseGateDb, -40);
   assert.equal(settings.microphoneNvidiaNoiseRemoval, true);
+});
+
+test('telemetry preference only accepts explicit consent choices', () => {
+  assert.equal(normalizeSettingsUpdate(base, { ...base, telemetryMode: 'diagnostics' }).telemetryMode, 'diagnostics');
+  assert.equal(normalizeSettingsUpdate(base, { ...base, telemetryMode: 'unexpected' }).telemetryMode, 'version');
 });
 
 test('live capture restarts when folder or microphone changes', () => {

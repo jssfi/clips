@@ -1,11 +1,14 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "jss-clips-updates",
+  "name": "{{CLIPS_FRONT_WORKER}}",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-08",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": false,
-  "routes": [{ "pattern": "cdn.clips.jss.fi", "custom_domain": true }],
-  "r2_buckets": [{ "binding": "UPDATES", "bucket_name": "jss-clips-updates" }],
+  "routes": [{ "pattern": "{{CLIPS_FRONT_DOMAIN}}", "custom_domain": true }],
+  "services": [
+    { "binding": "UPDATES", "service": "{{CLIPS_UPDATE_WORKER}}" },
+    { "binding": "TELEMETRY", "service": "{{CLIPS_TELEMETRY_WORKER}}" }
+  ],
   "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

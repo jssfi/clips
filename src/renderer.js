@@ -132,6 +132,7 @@ const values = () => ({
   cdnPassword: $("cdn-password").value,
   trimBitrate: $("trim-bitrate").value,
   nightlyUpdates: $("nightly-updates").checked,
+  telemetryMode: $("telemetry-mode").value,
 });
 function render(s, fill = false) {
   state = s;
@@ -159,6 +160,10 @@ function render(s, fill = false) {
   };
   $("about-update-status").textContent = updateStatus[s.update?.status] || updateStatus.idle;
   $("check-updates").disabled = !s.settings.nightlyUpdates || ["checking", "downloading"].includes(s.update?.status);
+  $("telemetry-mode").disabled = !s.telemetry?.configured;
+  $("telemetry-status").textContent = s.telemetry?.configured
+    ? "The choice applies immediately and can be changed at any time."
+    : "Telemetry is not configured in this build; no data can be sent.";
   const online = s.obs.connected;
   $("connection").textContent = online ? "Capture engine ready" : "Capture engine offline";
   $("connection-dot").classList.toggle("online", online);
@@ -271,6 +276,7 @@ function render(s, fill = false) {
     $("cdn-password").value = s.settings.cdnPassword || "";
     $("trim-bitrate").value = s.settings.trimBitrate || "original";
     $("nightly-updates").checked = !!s.settings.nightlyUpdates;
+    $("telemetry-mode").value = ["diagnostics", "version", "off"].includes(s.settings.telemetryMode) ? s.settings.telemetryMode : "off";
     updateStorageVisibility();
   }
 }
