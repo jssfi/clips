@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "{{CLIPS_TELEMETRY_WORKER}}",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-08",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": false,
+  "routes": [{ "pattern": "{{CLIPS_LEGACY_TELEMETRY_DOMAIN}}", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "TELEMETRY", "bucket_name": "{{CLIPS_TELEMETRY_BUCKET}}" }],
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

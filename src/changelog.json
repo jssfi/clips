@@ -1,0 +1,37 @@
+[
+  {
+    "version": "0.2.3",
+    "title": "Stable update checks",
+    "changes": [
+      "Manual update checks are now available on both stable and nightly channels."
+    ]
+  },
+  {
+    "version": "0.2.2",
+    "title": "Startup reliability and changelog",
+    "changes": [
+      "Stopped transient process-list output from surfacing as a startup error.",
+      "Added this scrolling release history to the About page.",
+      "Consolidated updates and telemetry behind clips.jss.fi."
+    ]
+  },
+  {
+    "version": "0.2.1",
+    "title": "First stable release",
+    "changes": [
+      "Introduced separate stable and nightly update channels.",
+      "Raw recording thumbnails now skip the black frames before game capture appears.",
+      "Added optional anonymous version or diagnostic telemetry.",
+      "Bundled complete third-party licensing notices and source information."
+    ]
+  },
+  {
+    "version": "0.1",
+    "title": "Development releases",
+    "changes": [
+      "Built the native libobs recording and replay-buffer engine.",
+      "Added per-application audio, MPV playback, trimming, storage cleanup, and restart-only updates.",
+      "Redesigned the recording library, settings, tray controls, and in-game notifications."
+    ]
+  }
+]

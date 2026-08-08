@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self' http://127.0.0.1:*">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#000000">
+  <title>Clips</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to content</a>
+  <div class="app">
+    <aside class="sidebar" aria-label="Clips navigation">
+      <header class="sidebar-header">
+        <button class="brand nav-main" type="button" data-page="recent" aria-label="Go to recent clips">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="m10 9 5 3-5 3z"/></svg>
+        </button>
+      </header>
+
+      <div id="primary-navigation" class="sidebar-body">
+        <nav class="sidebar-menu" aria-label="Library">
+          <button class="nav-item nav-main active" type="button" data-page="recent" aria-label="Recent">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg>
+            <span>Recent</span>
+          </button>
+          <button class="nav-item nav-main" type="button" data-page="library" aria-label="Library">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h4L12 6.5h6.5A1.5 1.5 0 0 1 20 8v10.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/></svg>
+            <span>Library</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-section">
+          <div class="sidebar-label"><span>Recorder</span><button type="button" id="scan-shortcut" class="mini-icon" aria-label="Add running game">+</button></div>
+          <div class="recorder-card">
+            <span id="record-indicator" class="record-indicator" aria-hidden="true"></span>
+            <div class="recorder-copy">
+              <strong id="status">Waiting for a game</strong>
+              <span id="detail">Monitoring configured games</span>
+            </div>
+          </div>
+          <div class="recorder-status">
+            <span id="footer-status">Monitoring in background</span>
+            <span id="connection-dot" class="status-dot" aria-hidden="true"></span>
+            <span id="connection" class="sr-only">Capture engine offline</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="settings-navigation" class="sidebar-body hidden">
+        <nav class="sidebar-menu settings-menu" aria-label="Settings sections">
+          <button class="settings-nav-item active" type="button" data-settings-group="general" aria-label="General">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>
+            <span>General</span>
+          </button>
+          <button class="settings-nav-item" type="button" data-settings-group="capture" aria-label="Capture">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>
+            <span>Capture</span>
+          </button>
+          <button class="settings-nav-item" type="button" data-settings-group="storage" aria-label="Storage">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>
+            <span>Storage</span>
+          </button>
+          <button class="settings-nav-item" type="button" data-settings-group="integrations" aria-label="Integrations">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>
+            <span>Integrations</span>
+          </button>
+          <button class="settings-nav-item" type="button" data-settings-group="advanced" aria-label="Advanced">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3 3M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10zM12 20h8"/></svg>
+            <span>Advanced</span>
+          </button>
+          <button class="settings-nav-item" type="button" data-settings-group="about" aria-label="About">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg>
+            <span>About</span>
+          </button>
+        </nav>
+      </div>
+
+      <footer class="sidebar-footer">
+        <button id="update-button" class="update-action hidden" type="button" aria-label="Restart to update" title="Restart to update">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+          <span>Update available</span>
+        </button>
+        <button id="settings-button" class="nav-item nav-main" type="button" data-page="settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></svg>
+          <span>Settings</span>
+        </button>
+        <button id="settings-back" class="nav-item hidden" type="button" aria-label="Back">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          <span>Back</span>
+        </button>
+      </footer>
+    </aside>
+
+    <main id="workspace" class="workspace">
+      <header class="titlebar">
+        <div class="titlebar-actions">
+          <button id="record" class="button ghost" type="button">Start recording</button>
+          <button id="clip" class="button primary" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 12h20"/></svg>
+            Save clip <kbd id="clip-key">Ctrl Shift F10</kbd>
+          </button>
+        </div>
+      </header>
+
+      <div id="error" class="error hidden" role="status" aria-live="polite"></div>
+
+      <section id="recent" class="page active" aria-labelledby="recent-title">
+        <div class="page-container">
+          <div class="page-heading">
+            <div><h1 id="recent-title">Recent</h1><p id="library-summary">Recordings from this session.</p></div>
+            <button id="library-folder" class="button outline" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h4L12 6.5h6.5A1.5 1.5 0 0 1 20 8v10.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/></svg>
+              Show in folder
+            </button>
+          </div>
+          <div id="recent-favorites-section" class="recording-section hidden">
+            <div class="section-title"><h2>Favorites</h2><span id="recent-favorite-count">0</span></div>
+            <div id="recent-favorite-list" class="recording-list"></div>
+          </div>
+          <div class="recording-section">
+            <div class="section-title"><h2>Replays</h2><span id="replay-count">0</span></div>
+            <div id="replay-list" class="recording-list"></div>
+          </div>
+          <div class="recording-section">
+            <div class="section-title"><h2>Full recordings</h2><span id="recording-count">0</span></div>
+            <div id="recording-list" class="recording-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="library" class="page" aria-labelledby="library-title">
+        <div class="page-container">
+          <div class="page-heading">
+            <div><h1 id="library-title">Library</h1><p id="archive-summary">Previous days saved on this device.</p></div>
+            <button id="archive-folder" class="button outline" type="button">Show storage folder</button>
+          </div>
+          <div id="archive-favorites-section" class="recording-section hidden">
+            <div class="section-title"><h2>Favorites</h2><span id="archive-favorite-count">0</span></div>
+            <div id="archive-favorite-list" class="recording-list"></div>
+          </div>
+          <div id="archive-days" class="archive-days"></div>
+        </div>
+      </section>
+
+      <section id="settings" class="page settings-page" aria-labelledby="settings-title">
+        <div class="settings-titlebar">
+          <span id="settings-title" class="sr-only">Settings</span>
+        </div>
+        <div class="settings-scroll">
+          <div id="settings-general" class="settings-group active" data-settings-page="general">
+            <div class="settings-heading"><h1>General</h1><p>Choose which games Clips watches and how it behaves in the background.</p></div>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Games</h2><p>Recording starts while any application in this list is running.</p></div>
+              <div class="settings-block">
+                <div class="settings-row settings-row-stack">
+                  <div class="row-heading"><div><strong>Monitored games</strong><small>Executables that trigger automatic recording.</small></div><button id="scan" class="button outline" type="button">Add running game</button></div>
+                  <div id="game-list" class="game-list"></div>
+                  <div id="process-picker" class="process-picker hidden"></div>
+                </div>
+              </div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Startup</h2></div>
+              <div class="settings-block">
+                <label class="settings-row" for="auto"><span><strong>Automatic recording</strong><small>Start recording when a monitored game is detected.</small></span><input id="auto" name="autoRecord" type="checkbox" role="switch"></label>
+                <label class="settings-row" for="startup"><span><strong>Launch in background</strong><small>Start Clips and its capture engine when you sign in to Windows.</small></span><input id="startup" name="startWithWindows" type="checkbox" role="switch"></label>
+              </div>
+            </section>
+          </div>
+
+          <div id="settings-capture" class="settings-group" data-settings-page="capture">
+            <div class="settings-heading"><h1>Capture</h1><p>Configure replay length, shortcuts, and the built-in recording engine.</p></div>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Clipping</h2></div>
+              <div class="settings-block">
+                <label class="settings-row" for="clip-length"><span><strong>Clip length</strong><small>How many seconds of the replay buffer to save.</small></span><span class="control-with-unit"><input id="clip-length" name="clipLengthSeconds" type="number" min="5" max="3600" inputmode="numeric"><em>sec</em></span></label>
+                <label class="settings-row" for="hotkey"><span><strong>Clip shortcut</strong><small>Click the field, press your shortcut, then release every key to save it.</small></span><span class="shortcut-control"><input id="hotkey" class="shortcut-capture" name="clipHotkey" readonly autocomplete="off" spellcheck="false"><em id="shortcut-feedback">Click to remap</em></span></label>
+              </div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Recording profile</h2><p>Applied directly to the capture engine after saving. Stop recording before changing these.</p></div>
+              <div class="settings-block">
+                <label class="settings-row" for="recording-quality"><span><strong>Quality</strong><small>Balance image quality and file size.</small></span><select id="recording-quality" name="obsRecordingQuality"><option value="HQ">High quality</option><option value="Small">Smaller files</option><option value="Lossless">Near-lossless (very large)</option><option value="Stream">Standard quality</option></select></label>
+                <label class="settings-row" for="format"><span><strong>File format</strong><small>MKV is safest if recording is interrupted.</small></span><select id="format" name="obsFormat"><option value="mkv">MKV (recommended)</option><option value="mp4">MP4</option></select></label>
+                <label class="settings-row" for="resolution"><span><strong>Resolution</strong><small>Output resolution for recordings and replays.</small></span><select id="resolution" name="obsResolution"><option value="2560x1440">1440p</option><option value="1920x1080">1080p</option><option value="1280x720">720p</option></select></label>
+                <label class="settings-row" for="fps"><span><strong>Frame rate</strong><small>Frames captured each second.</small></span><select id="fps" name="obsFps"><option value="60">60 FPS</option><option value="30">30 FPS</option></select></label>
+                <label class="settings-row" for="microphone"><span><strong>Microphone input</strong><small>Mixed into new recordings and saved clips.</small></span><select id="microphone" name="microphoneDeviceId"><option value="disabled">Off</option></select></label>
+                <label class="settings-row" for="microphone-volume"><span><strong>Microphone volume</strong><small>Applied live to recordings and saved clips.</small></span><span class="settings-range-control"><input id="microphone-volume" name="microphoneVolumePercent" type="range" min="0" max="200" step="1"><output id="microphone-volume-value" for="microphone-volume">100%</output></span></label>
+                <label class="settings-row" for="microphone-nvidia-noise-removal"><span><strong>NVIDIA noise removal</strong><small>RTX-accelerated removal for keyboard, mouse, fan, and room noise during speech.</small></span><input id="microphone-nvidia-noise-removal" name="microphoneNvidiaNoiseRemoval" type="checkbox" role="switch"></label>
+                <label class="settings-row" for="microphone-noise-gate"><span><strong>Noise gate</strong><small>Sounds quieter than this level are not recorded.</small></span><span class="settings-range-control microphone-gate-control"><span class="microphone-level-meter" aria-label="Live microphone level"><i id="microphone-level-fill"></i><b id="microphone-gate-marker"></b></span><input id="microphone-noise-gate" name="microphoneNoiseGateDb" type="range" min="-60" max="-5" step="1"><output id="microphone-noise-gate-value" for="microphone-noise-gate">−40 dB</output></span></label>
+              </div>
+            </section>
+          </div>
+
+          <div id="settings-storage" class="settings-group" data-settings-page="storage">
+            <div class="settings-heading"><h1>Storage</h1><p>Control where footage is saved and when old files are removed.</p></div>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Recordings</h2></div>
+              <div class="settings-block">
+                <label class="settings-row" for="folder"><span><strong>Storage folder</strong><small>Recordings, replays, and trimmed clips are saved here.</small></span><span class="path-control"><input id="folder" name="recordingsFolder" autocomplete="off"><button id="browse" class="button outline" type="button">Browse</button></span></label>
+                <label class="settings-row" for="cleanup-mode"><span><strong>Delete footage</strong><small>Choose when Clips automatically clears old recordings.</small></span><select id="cleanup-mode" name="storageCleanupMode"><option value="disk">When drive is full</option><option value="days">After a number of days</option></select></label>
+                <label id="disk-percent-row" class="settings-row" for="disk-percent"><span><strong>Drive usage limit</strong><small>Maximum percentage of the drive Clips may use.</small></span><span class="control-with-unit"><input id="disk-percent" name="maxDiskUsagePercent" type="number" min="1" max="99" inputmode="numeric"><em>%</em></span></label>
+                <label id="raw-gigabytes-row" class="settings-row" for="raw-gigabytes"><span><strong>Maximum raw footage</strong><small>Full source recordings only. Saved replays and trimmed clips do not count.</small></span><span class="control-with-unit"><input id="raw-gigabytes" name="maxRawRecordingGigabytes" type="number" min="1" max="100000" step="1" inputmode="numeric"><em>GB</em></span></label>
+                <label id="days-row" class="settings-row" for="days"><span><strong>Keep recordings for</strong><small>Retention period when time-based cleanup is selected.</small></span><span class="control-with-unit"><input id="days" name="retentionDays" type="number" min="1" max="365" inputmode="numeric"><em>days</em></span></label>
+              </div>
+            </section>
+          </div>
+
+          <div id="settings-integrations" class="settings-group" data-settings-page="integrations">
+            <div class="settings-heading"><h1>Integrations</h1><p>Connect uploads and the native video editor.</p></div>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>CDN upload</h2><p>Uploads happen only when you press Upload on a recording.</p></div>
+              <div class="settings-block">
+                <label class="settings-row" for="cdn-url"><span><strong>CDN URL</strong><small>Endpoint used to upload clips.</small></span><input id="cdn-url" name="cdnUrl" type="url" autocomplete="url" placeholder="https://cdn.jss.fi"></label>
+                <label class="settings-row" for="cdn-password"><span><strong>CDN password</strong><small>Authentication password sent with uploads.</small></span><input id="cdn-password" name="cdnPassword" type="password" autocomplete="off"></label>
+              </div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Video player</h2><p>MPV is included with Clips and needs no separate installation.</p></div>
+              <div class="settings-block">
+                <label class="settings-row" for="trim-bitrate"><span><strong>Trim quality</strong><small>Original copies streams; a bitrate creates a smaller H.264 clip.</small></span><select id="trim-bitrate" name="trimBitrate"><option value="original">Original quality</option><option value="6M">6 Mbps</option><option value="12M">12 Mbps</option><option value="18M">18 Mbps</option></select></label>
+              </div>
+            </section>
+          </div>
+
+          <div id="settings-advanced" class="settings-group" data-settings-page="advanced">
+            <div class="settings-heading"><h1>Advanced</h1><p>Capture-engine timing and application audio routing.</p></div>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Capture engine</h2></div>
+              <div class="settings-block">
+                <label class="settings-row" for="delay"><span><strong>Stop delay</strong><small>Wait before stopping after the game closes.</small></span><span class="control-with-unit"><input id="delay" name="stopDelaySeconds" type="number" min="0" inputmode="numeric"><em>sec</em></span></label>
+                <div class="settings-row"><span><strong>Engine status</strong><small>Restart the private libobs host if capture becomes unavailable.</small></span><button id="connect" class="button outline" type="button">Reconnect</button></div>
+              </div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Audio routing</h2></div>
+              <div class="settings-block">
+                <label class="settings-row settings-row-stack" for="audio-exes"><span><strong>Allowed audio applications</strong><small>One executable per line. The active game is always included.</small></span><textarea id="audio-exes" name="audioExecutables" rows="5" autocomplete="off" spellcheck="false" placeholder="Discord.exe&#10;game.exe"></textarea></label>
+              </div>
+            </section>
+          </div>
+
+          <div id="settings-about" class="settings-group" data-settings-page="about">
+            <div class="settings-heading"><h1>About</h1><p>Version information and application updates.</p></div>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Clips</h2></div>
+              <div class="settings-block">
+                <div class="settings-row"><span><strong>Version</strong><small>The installed application release.</small></span><span id="about-version" class="about-value">—</span></div>
+                <div class="settings-row"><span><strong>Build time</strong><small>When this release package was created.</small></span><span id="about-build-time" class="about-value">—</span></div>
+                <div class="settings-row"><span><strong>Media runtime</strong><small>libobs, FFmpeg, and MPV shared across app updates.</small></span><span id="about-runtime" class="about-value">—</span></div>
+                <label class="settings-row" for="nightly-updates"><span><strong>Nightly updates</strong><small>Receive frequent development builds. These may be less stable.</small></span><input id="nightly-updates" name="nightlyUpdates" type="checkbox" role="switch"></label>
+                <div class="settings-row"><span><strong>Updates</strong><small id="about-update-status" role="status" aria-live="polite">Updates are checked automatically.</small></span><button id="check-updates" class="button outline" type="button">Check for updates</button></div>
+                <div class="settings-row"><span><strong>Diagnostic log</strong><small>Keeps the most recent hour, capped at 5 MB.</small></span><button id="open-logs" class="button outline" type="button">Show log file</button></div>
+              </div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Changelog</h2><p>Newest releases appear first.</p></div>
+              <div id="changelog" class="changelog" aria-label="Release history"></div>
+            </section>
+            <section class="settings-section">
+              <div class="settings-section-title"><h2>Privacy</h2><p>Optional anonymous telemetry for official builds.</p></div>
+              <div class="settings-block">
+                <label class="settings-row" for="telemetry-mode"><span><strong>Telemetry</strong><small id="telemetry-status">Choose what Clips may send.</small></span><select id="telemetry-mode" name="telemetryMode"><option value="diagnostics">Diagnostics and error logs</option><option value="version">Version only</option><option value="off">Nothing</option></select></label>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form method="dialog" class="editor-shell">
+      <div class="editor-head">
+        <div><span class="dialog-eyebrow">Video editor</span><h2 id="editor-title">Trim recording</h2><p id="editor-name"></p></div>
+        <button class="icon-button" value="cancel" aria-label="Close editor">&times;</button>
+      </div>
+      <div id="mpv-stage" class="video-stage mpv-stage"><canvas id="mpv-canvas"></canvas><div id="mpv-loading"><strong>Starting embedded libmpv&hellip;</strong></div></div>
+      <div id="player-controls" class="player-controls">
+        <div class="transport">
+          <button id="transport-play" type="button" class="button outline transport-icon" aria-label="Play" title="Play"></button>
+          <span id="playhead-time">00:00.00</span>
+          <label class="viewer-control volume-control" for="viewer-volume"><span>Volume</span><input id="viewer-volume" type="range" min="0" max="100" value="100" aria-label="Viewer volume"></label>
+          <span class="transport-spacer"></span>
+          <span id="selection-duration">00:00.00 selected</span>
+          <button id="viewer-fullscreen" type="button" class="button outline viewer-control transport-icon" aria-label="Enter fullscreen" title="Fullscreen"></button>
+        </div>
+        <div id="trim-timeline" class="trim-timeline">
+          <div class="trim-track"></div><div id="trim-selection" class="trim-selection"></div>
+          <button id="trim-start" class="trim-handle start" type="button" aria-label="Drag trim start"><i></i></button>
+          <button id="trim-end" class="trim-handle end" type="button" aria-label="Drag trim end"><i></i></button>
+          <div id="trim-playhead" class="trim-playhead"></div>
+        </div>
+        <div class="trim-readout"><label>IN <input id="trim-start-time" value="00:00:00.00" inputmode="decimal" aria-label="Trim start time"></label><label>OUT <input id="trim-end-time" value="00:00:00.00" inputmode="decimal" aria-label="Trim end time"></label></div>
+      </div>
+      <p id="editor-status" class="editor-status" role="status" aria-live="polite">The original recording will stay untouched.</p>
+      <div id="export-progress" class="export-progress hidden" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i><span>0%</span></div>
+      <div class="editor-actions"><button value="cancel" class="button outline">Cancel</button><button id="export-trim" class="button primary" type="button">Export trimmed clip</button></div>
+    </form>
+  </dialog>
+  <div id="selection-bar" class="selection-bar hidden" role="toolbar" aria-label="Selected recordings">
+    <span id="selection-count">0 selected</span>
+    <button id="selection-clear" class="button ghost" type="button">Clear</button>
+    <button id="selection-delete" class="button danger" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>Delete</button>
+  </div>
+  <dialog id="delete-dialog" class="confirm-dialog" aria-labelledby="delete-title">
+    <form method="dialog">
+      <div class="confirm-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></div>
+      <h2 id="delete-title">Delete recording?</h2>
+      <p id="delete-detail">This file will be permanently deleted.</p>
+      <p id="delete-error" class="delete-error hidden" role="alert"></p>
+      <div class="confirm-actions"><button value="cancel" class="button outline">Cancel</button><button id="confirm-delete" class="button danger" type="button">Delete</button></div>
+    </form>
+  </dialog>
+  <script src="renderer.js"></script>
+</body>
+</html>

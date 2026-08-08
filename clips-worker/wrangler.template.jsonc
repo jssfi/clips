@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "{{CLIPS_FRONT_WORKER}}",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-08",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "{{CLIPS_FRONT_DOMAIN}}", "custom_domain": true },
+    { "pattern": "{{CLIPS_LEGACY_UPDATE_DOMAIN}}", "custom_domain": true },
+    { "pattern": "{{CLIPS_LEGACY_TELEMETRY_DOMAIN}}", "custom_domain": true }
+  ],
+  "vars": {
+    "PRIMARY_DOMAIN": "{{CLIPS_FRONT_DOMAIN}}",
+    "LEGACY_UPDATE_DOMAIN": "{{CLIPS_LEGACY_UPDATE_DOMAIN}}",
+    "LEGACY_TELEMETRY_DOMAIN": "{{CLIPS_LEGACY_TELEMETRY_DOMAIN}}",
+    "UPDATE_PATH": "{{CLIPS_UPDATE_PATH}}",
+    "TELEMETRY_PATH": "{{CLIPS_TELEMETRY_PATH}}"
+  },
+  "r2_buckets": [
+    { "binding": "UPDATES", "bucket_name": "{{CLIPS_UPDATE_BUCKET}}" },
+    { "binding": "TELEMETRY", "bucket_name": "{{CLIPS_TELEMETRY_BUCKET}}" }
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}

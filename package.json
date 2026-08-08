@@ -1,0 +1,65 @@
+{
+  "name": "clips",
+  "version": "0.2.2",
+  "description": "Automatic game recording and clipping with a private libobs capture engine",
+  "author": "jss",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "start:update-ready": "set CLIPS_UPDATE_MOCK=1&&electron .",
+    "setup:prerequisites": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-prerequisites.ps1",
+    "stage:obs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-obs.ps1",
+    "stage:libobs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-libobs.ps1",
+    "stage:ffmpeg": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-ffmpeg.ps1",
+    "stage:mpv": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-mpv.ps1",
+    "stage:legal": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stage-legal.ps1",
+    "stage:runtime": "npm run stage:obs && npm run stage:libobs && npm run stage:ffmpeg && npm run stage:mpv && npm run stage:legal",
+    "build:mpv-host": "scripts\\build-mpv-host.cmd",
+    "build:capture-host": "scripts\\build-capture-host.cmd",
+    "build:info": "node scripts/write-build-info.js",
+    "check": "node --check src/main.js && node --check src/obs.js && node --check src/runtime.js && node --check src/updater.js && node --check src/telemetry.js && node --check src/preload.js && node --check src/renderer.js && node --check src/logger.js && node --check src/settings.js && node --check scripts/env.js && node --check scripts/write-worker-config.js && node --check scripts/write-build-info.js && node --check scripts/local-update-server.js && node --check scripts/generate-app-icon.js && node --test --test-concurrency=1 test/*.test.js && npm --prefix legacy/update-worker run check && npm --prefix legacy/telemetry-worker run check && npm --prefix clips-worker run check",
+    "dist": "npm run build:info && npm run stage:legal && electron-builder --config electron-builder.update.json --win nsis",
+    "dist:staged": "npm run build:info && npm run stage:legal && electron-builder --config electron-builder.staged.json --win dir && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-staged-update.ps1",
+    "dist:release": "npm run dist && npm run dist:staged",
+    "test:staged-update": "node scripts/test-staged-update.js",
+    "test:capture-host": "node scripts/test-capture-host.js",
+    "test:capture-controller": "node scripts/test-capture-controller.js",
+    "test:microphone-slider": "electron scripts/test-microphone-slider.js",
+    "test:runtime-install": "node scripts/test-runtime-install.js",
+    "dist:bootstrap": "npm run build:info && npm run stage:legal && electron-builder --config electron-builder.bootstrap.json --win nsis",
+    "dist:fresh": "npm run stage:runtime && npm run build:mpv-host && npm run build:capture-host && npm run dist:bootstrap",
+    "dist:portable": "npm run build:info && electron-builder --config electron-builder.bootstrap.json --win portable",
+    "update:serve": "node scripts/local-update-server.js"
+  },
+  "devDependencies": {
+    "7zip-bin": "^5.2.0",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "io.clips.desktop",
+    "productName": "jss clips",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "compression": "normal",
+    "win": {
+      "icon": "assets/app-icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "jss-clips-setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "jss-clips-portable-${version}-${arch}.${ext}"
+    }
+  }
+}

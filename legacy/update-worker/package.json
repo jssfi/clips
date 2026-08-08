@@ -1,0 +1,15 @@
+{
+  "name": "jss-clips-update-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "config": "node ../../scripts/write-worker-config.js legacy/update-worker",
+    "check": "npm run config && wrangler types && tsc --noEmit && wrangler deploy --dry-run",
+    "deploy": "npm run config && wrangler deploy --minify",
+    "types": "npm run config && wrangler types"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "wrangler": "^4.114.0"
+  }
+}
