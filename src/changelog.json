@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.3-29490581",
     "title": "Persistent window controls",
     "changes": [
       "The recording controls and Windows title-bar buttons now remain in a reserved top row across the library, Settings, and clip player.",
