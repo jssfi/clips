@@ -1,0 +1,21 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const source = name => fs.readFileSync(path.join(__dirname, '..', 'src', name), 'utf8');
+
+test('the shared title bar stays visible in settings and above the player', () => {
+  const css = source('styles.css');
+  const html = source('index.html');
+  assert.doesNotMatch(css, /settings-open\s*>\s*\.titlebar\s*\{\s*display:\s*none/);
+  assert.doesNotMatch(html, /class="settings-titlebar"/);
+  assert.match(css, /\.titlebar\s*\{[\s\S]*?z-index:\s*60/);
+  assert.match(css, /#editor\s*\{[\s\S]*?inset:\s*calc\(var\(--topbar-height\)/);
+});
+
+test('the clip player uses a non-modal overlay so title-bar actions remain usable', () => {
+  const renderer = source('renderer.js');
+  assert.match(renderer, /\$\("editor"\)\.show\(\)/);
+  assert.doesNotMatch(renderer, /\$\("editor"\)\.showModal\(\)/);
+});

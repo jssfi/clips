@@ -758,8 +758,8 @@ async function openEmbeddedRecording({ filePath, name, mode }) {
     ? "Opening in the embedded player…"
     : "Opening the original recording in MPV…";
   $("export-trim").disabled = false;
-  $("editor").showModal();
-  await window.clips.setModalAppearance(true);
+  document.body.classList.add("editor-open");
+  $("editor").show();
   try {
     const preview = await window.clips.startMpv(editingPath, mpvStageBounds());
     mpvDuration = preview.duration;
@@ -1111,10 +1111,10 @@ document.addEventListener("keyup", event => {
 });
 window.addEventListener("blur", stopArrowSeeking);
 $("editor").addEventListener("close", () => {
+  document.body.classList.remove("editor-open");
   stopArrowSeeking();
   clearTimeout(liveMixTimer);
   liveMixTimer = null;
-  window.clips.setModalAppearance(false);
   clearInterval(mpvPollTimer);
   mpvPollTimer = null;
   window.clips.closeMpv();

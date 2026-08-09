@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Persistent window controls",
+    "changes": [
+      "The recording controls and Windows title-bar buttons now remain in a reserved top row across the library, Settings, and clip player.",
+      "The clip player stays below the title bar at compact window sizes instead of covering content behind the native window buttons."
+    ]
+  },
+  {
     "version": "0.3",
     "title": "Reliable overlay and commit nightlies",
     "changes": [

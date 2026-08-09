@@ -277,9 +277,9 @@ svg {
   overflow: hidden;
   background: var(--background);
 }
-.workspace.settings-open > .titlebar { display: none; }
-.workspace.settings-open .settings-titlebar { height: var(--topbar-height); flex-basis: var(--topbar-height); }
 .titlebar {
+  position: relative;
+  z-index: 60;
   display: flex;
   height: var(--topbar-height);
   flex: 0 0 var(--topbar-height);
@@ -287,6 +287,8 @@ svg {
   justify-content: space-between;
   gap: 16px;
   padding: 0 154px 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(10, 10, 10, .96);
   -webkit-app-region: drag;
 }
 .titlebar > * { -webkit-app-region: no-drag; }
@@ -566,20 +568,6 @@ kbd {
 .archive-empty { min-height: 300px; }
 
 .settings-page.active { display: flex; flex-direction: column; overflow: hidden; }
-.settings-titlebar {
-  display: flex;
-  height: 42px;
-  flex: 0 0 42px;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 154px 0 20px;
-  color: rgba(146,146,151,.74);
-  font-size: 10px;
-  font-weight: 560;
-  letter-spacing: .055em;
-  text-transform: uppercase;
-  -webkit-app-region: drag;
-}
 .settings-scroll { min-height: 0; flex: 1; overflow-y: auto; }
 .settings-group {
   display: none;
@@ -849,7 +837,23 @@ dialog {
   box-shadow: 0 30px 100px rgba(0,0,0,.75);
 }
 dialog::backdrop { background: rgba(0,0,0,.74); backdrop-filter: blur(8px); }
-#editor { width: min(1100px, calc(100vw - 48px)); }
+#editor {
+  position: fixed;
+  z-index: 50;
+  inset: calc(var(--topbar-height) + 12px) 24px 18px calc(var(--sidebar-width) + 24px);
+  width: min(1100px, calc(100vw - var(--sidebar-width) - 48px));
+  max-height: calc(100vh - var(--topbar-height) - 30px);
+  margin: auto;
+}
+body.editor-open::before {
+  content: "";
+  position: fixed;
+  z-index: 40;
+  inset: var(--topbar-height) 0 0 var(--sidebar-width);
+  background: rgba(0,0,0,.74);
+  backdrop-filter: blur(8px);
+}
+body.editor-open .workspace > .page { overflow: hidden; }
 .selection-bar {
   position: fixed;
   z-index: 30;
@@ -886,7 +890,7 @@ dialog::backdrop { background: rgba(0,0,0,.74); backdrop-filter: blur(8px); }
 .mixer-mute { min-width: 58px; padding-inline: 8px; }
 .mixer-mute[aria-pressed="true"] { border-color: rgba(239,91,91,.5); background: rgba(185,42,48,.25); color: #ff8589; }
 .mixer-actions { display: grid; gap: 7px; margin-top: 14px; }
-.editor-shell { box-sizing: border-box; padding: 18px; }
+.editor-shell { box-sizing: border-box; max-height: calc(100vh - var(--topbar-height) - 32px); padding: 18px; overflow: auto; }
 .editor-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 14px; }
 .editor-heading { min-width: 0; }
 .editor-head h2 { margin: 2px 0 0; font-size: 16px; font-weight: 590; }
@@ -897,7 +901,7 @@ dialog::backdrop { background: rgba(0,0,0,.74); backdrop-filter: blur(8px); }
 .dialog-eyebrow { color: var(--faint); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
 .editor-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 300px; min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #080809; }
 .editor-media { min-width: 0; background: #050506; }
-.editor-sidebar { max-height: calc(100vh - 120px); padding: 14px; overflow-y: auto; border-left: 1px solid var(--border); background: #0d0d0f; }
+.editor-sidebar { max-height: calc(100vh - var(--topbar-height) - 120px); padding: 14px; overflow-y: auto; border-left: 1px solid var(--border); background: #0d0d0f; }
 .editor-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 18px; padding: 3px; border: 1px solid var(--border); border-radius: 7px; background: #070708; }
 .editor-tab { min-height: 31px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 11px; }
 .editor-tab:hover { color: var(--foreground); }
@@ -985,7 +989,7 @@ dialog::backdrop { background: rgba(0,0,0,.74); backdrop-filter: blur(8px); }
   top: 15px;
   bottom: 14px;
 }
-.viewer-mode .video-stage { height: clamp(280px, calc(100vh - 230px), 520px); }
+.viewer-mode .video-stage { height: clamp(220px, calc(100vh - var(--topbar-height) - 230px), 520px); }
 
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
   outline: 2px solid #7b84ee;
@@ -1003,6 +1007,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .settings-row > input, .settings-row > select, .path-control { width: 100%; }
   .titlebar { padding-inline: 12px; }
   .titlebar-actions { margin-left: auto; }
+  .titlebar kbd { display: none; }
+  #editor { right: 12px; left: calc(var(--sidebar-width) + 12px); width: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
