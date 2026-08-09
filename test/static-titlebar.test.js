@@ -19,3 +19,8 @@ test('the clip player uses a non-modal overlay so title-bar actions remain usabl
   assert.match(renderer, /\$\("editor"\)\.show\(\)/);
   assert.doesNotMatch(renderer, /\$\("editor"\)\.showModal\(\)/);
 });
+
+test('the update Worker routes prerelease restart packages', () => {
+  const worker = fs.readFileSync(path.join(__dirname, '..', 'clips-worker', 'src', 'updates.ts'), 'utf8');
+  assert.equal(worker.includes('jss-clips-app-\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?-x64\\.zip'), true);
+});
