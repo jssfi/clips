@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.3",
+    "title": "Reliable overlay and commit nightlies",
+    "changes": [
+      "Improved overlay topmost behavior and automatic recovery after renderer or loading failures.",
+      "Made game-window detection resilient to windows disappearing during a process scan.",
+      "Added overlay diagnostics for readiness, monitor placement, bounds, and topmost state.",
+      "Nightly builds now carry the short commit hash that identifies their source snapshot."
+    ]
+  },
+  {
     "version": "0.2.8",
     "title": "Live audio mixing",
     "changes": [

@@ -17,6 +17,7 @@ const { createLogger } = require('./logger');
 const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
 const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./telemetry');
 const { parseProcessList } = require('./process-list');
+const { displayVersion } = require('./version');
 const changelog = require('./changelog.json');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
@@ -49,7 +50,7 @@ const DEFAULTS = {
   nightlyUpdates: false, telemetryMode: 'pending'
 };
 
-let win, toastWin, tray, settings, monitorTimer, stopTimer, toastHideTimer, microphoneVolumePersistTimer, connectPromise, mediaServer, mediaPort = 0, autoRecordSuppressed = false, lastError = '', activeGames = [], runningApps = [], lastClip = '', sessionDate = '', toastReady = false, pendingToast = null;
+let win, toastWin, tray, settings, monitorTimer, stopTimer, toastHideTimer, toastRecoveryTimer, microphoneVolumePersistTimer, connectPromise, mediaServer, mediaPort = 0, autoRecordSuppressed = false, lastError = '', activeGames = [], runningApps = [], lastClip = '', sessionDate = '', toastReady = false, pendingToast = null;
 let mpvProcess = null, mpvSocket = null, mpvBuffer = '', mpvRequestId = 0;
 let mpvFrameBuffer = Buffer.alloc(0);
 const mpvRequests = new Map();
@@ -827,6 +828,7 @@ public struct ClipsWindowRect {
 }
 '@
 Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
+  try {
     $processPath = $null
     try { $processPath = $_.Path } catch {}
     $windowClass = New-Object System.Text.StringBuilder 256
@@ -845,13 +847,20 @@ Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
         height = $windowRect.Bottom - $windowRect.Top
       }} else { $null }
     }
+  } catch {}
   } | Sort-Object name -Unique | ConvertTo-Json -Compress`;
+  const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true });
-    try { return parseProcessList(stdout); }
-    catch (error) {
-      logger.warn('process list JSON was incomplete', { attempt, bytes: Buffer.byteLength(stdout || ''), message: error.message });
-      if (attempt === 2) return runningApps;
+    let stdout = '';
+    try {
+      ({ stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript], { windowsHide: true }));
+      return parseProcessList(stdout);
+    } catch (error) {
+      logger.warn('process list refresh attempt failed', { attempt, bytes: Buffer.byteLength(stdout || ''), message: error.message });
+      if (attempt === 2) {
+        logger.warn('process list refresh failed; retaining the previous snapshot', { applications: runningApps.length });
+        return runningApps;
+      }
     }
   }
   return runningApps;
@@ -920,7 +929,7 @@ async function tryConnect() {
   })();
   return connectPromise;
 }
-async function state() { return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings: recentRecordings(), archivedRecordings: archivedRecordings(), lastError, lastClip, captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: app.getVersion(), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()), changelog }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState }; }
+async function state() { return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings: recentRecordings(), archivedRecordings: archivedRecordings(), lastError, lastClip, captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: displayVersion(app.getVersion()), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()), changelog }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState }; }
 
 async function collectSystemInformation() {
   let gpu = 'Unknown';
@@ -992,7 +1001,7 @@ async function broadcast() {
   if (win && !win.isDestroyed()) win.webContents.send('state', currentState);
 }
 function setUpdateState(next) {
-  updateState = { ...updateState, ...next };
+  updateState = { ...updateState, ...next, ...(next.version ? { version: displayVersion(next.version) } : {}) };
   broadcast().catch(() => {});
 }
 function updateFeedUrl() {
@@ -1010,7 +1019,7 @@ function configureUpdates() {
   const generation = ++updateConfigurationGeneration;
   updateState = {
     status: 'idle',
-    version: app.getVersion(),
+    version: displayVersion(app.getVersion()),
     percent: 0,
     message: '',
     configured: false
@@ -1087,13 +1096,23 @@ function positionOverlayWindow() {
     display.bounds.y,
     false
   );
+  return display;
+}
+function reinforceOverlayTopmost() {
+  if (!toastWin || toastWin.isDestroyed()) return;
+  toastWin.setAlwaysOnTop(true, 'screen-saver', 1);
+  toastWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (toastWin.isVisible()) toastWin.moveTop();
 }
 function displayOverlayToast(toast) {
   if (!toastWin || toastWin.isDestroyed() || !toastReady) { pendingToast = toast; return; }
   clearTimeout(toastHideTimer);
-  positionOverlayWindow();
+  const display = positionOverlayWindow();
+  reinforceOverlayTopmost();
   toastWin.showInactive();
+  reinforceOverlayTopmost();
   toastWin.webContents.send('toast:show', toast);
+  logger.info('overlay toast shown', { kind: toast.kind, displayId: display?.id, bounds: toastWin.getBounds(), alwaysOnTop: toastWin.isAlwaysOnTop() });
   const visibleDuration = toast.kind === 'recording' || toast.kind === 'recording-stopped' ? 1350 : 1000;
   toastHideTimer = setTimeout(() => {
     if (!toastWin || toastWin.isDestroyed()) return;
@@ -1101,8 +1120,22 @@ function displayOverlayToast(toast) {
   }, visibleDuration);
 }
 function showOverlayToast(message, kind) { displayOverlayToast({ message, kind }); }
+function recoverOverlayWindow(reason, failedWindow = toastWin) {
+  if (failedWindow !== toastWin) return;
+  logger.warn('overlay window recovery scheduled', { reason });
+  toastReady = false;
+  clearTimeout(toastRecoveryTimer);
+  if (toastWin && !toastWin.isDestroyed()) toastWin.destroy();
+  if (app.isQuitting) return;
+  toastRecoveryTimer = setTimeout(() => {
+    toastRecoveryTimer = null;
+    if (!toastWin || toastWin.isDestroyed()) createOverlayWindow();
+  }, 250);
+}
 function createOverlayWindow() {
-  toastWin = new BrowserWindow({
+  clearTimeout(toastRecoveryTimer);
+  toastRecoveryTimer = null;
+  const overlayWindow = new BrowserWindow({
     show: false,
     width: 420,
     height: 140,
@@ -1117,16 +1150,23 @@ function createOverlayWindow() {
     backgroundColor: '#00000000',
     webPreferences: { preload: path.join(__dirname, 'overlay-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
+  toastWin = overlayWindow;
   toastWin.setIgnoreMouseEvents(true);
-  toastWin.setAlwaysOnTop(true, 'screen-saver');
-  toastWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  reinforceOverlayTopmost();
   toastWin.webContents.on('did-finish-load', () => {
     toastReady = true;
-    toastWin.showInactive();
+    logger.info('overlay window ready', { bounds: toastWin.getBounds(), alwaysOnTop: toastWin.isAlwaysOnTop() });
     if (pendingToast) { const toast = pendingToast; pendingToast = null; displayOverlayToast(toast); }
   });
-  toastWin.on('closed', () => { toastWin = null; toastReady = false; });
-  toastWin.loadFile(path.join(__dirname, 'overlay.html'));
+  toastWin.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+    if (isMainFrame) recoverOverlayWindow(`load failed (${code} ${description}) for ${url}`, overlayWindow);
+  });
+  toastWin.webContents.on('render-process-gone', (_event, details) => recoverOverlayWindow(`renderer exited (${details.reason}, code ${details.exitCode})`, overlayWindow));
+  toastWin.on('unresponsive', () => recoverOverlayWindow('renderer became unresponsive', overlayWindow));
+  toastWin.on('closed', () => {
+    if (toastWin === overlayWindow) { toastWin = null; toastReady = false; }
+  });
+  toastWin.loadFile(path.join(__dirname, 'overlay.html')).catch(error => recoverOverlayWindow(`load rejected: ${error.message}`, overlayWindow));
 }
 
 const titleBarAppearance = {
@@ -1189,7 +1229,7 @@ app.whenReady().then(async () => {
 app.on('second-instance', showMainWindow);
 process.on('uncaughtExceptionMonitor', error => { logger.error('uncaught exception', { message: error.message, stack: error.stack }); telemetry?.reportError(error).catch(() => {}); });
 process.on('unhandledRejection', error => { logger.error('unhandled rejection', { message: error?.message || String(error), stack: error?.stack }); telemetry?.reportError(error).catch(() => {}); });
-app.on('will-quit', () => { logger.info('application quitting'); if (microphoneVolumePersistTimer) persist(); logger.maintain(); clearTimeout(toastHideTimer); clearTimeout(microphoneVolumePersistTimer); clearTimeout(monitorTimer); clearTimeout(updateCheckTimeout); clearInterval(updateCheckTimer); obs.disconnect().catch(() => {}); closeMpvSession(); mediaServer?.close(); globalShortcut.unregisterAll(); });
+app.on('will-quit', () => { logger.info('application quitting'); if (microphoneVolumePersistTimer) persist(); logger.maintain(); clearTimeout(toastHideTimer); clearTimeout(toastRecoveryTimer); clearTimeout(microphoneVolumePersistTimer); clearTimeout(monitorTimer); clearTimeout(updateCheckTimeout); clearInterval(updateCheckTimer); obs.disconnect().catch(() => {}); closeMpvSession(); mediaServer?.close(); globalShortcut.unregisterAll(); });
 
 ipcMain.handle('state:get', state);
 ipcMain.handle('update:install', async () => {

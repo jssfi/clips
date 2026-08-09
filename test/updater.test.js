@@ -39,6 +39,11 @@ test('compareVersions orders patch releases', () => {
   assert.equal(compareVersions('1.2.3', '1.2.3'), 0);
 });
 
+test('compareVersions orders commit nightlies after their stable base', () => {
+  assert.equal(compareVersions('0.3.1-nightly.42.bbbbbbbb', '0.3.0'), 1);
+  assert.equal(compareVersions('0.3.1-nightly.43.aaaaaaaa', '0.3.1-nightly.42.bbbbbbbb'), 1);
+});
+
 test('isPreparationDirectory recognizes fixed and unique updater staging directories', () => {
   assert.equal(isPreparationDirectory('0.1.13.preparing'), true);
   assert.equal(isPreparationDirectory('0.1.14.preparing-1234-5678-abcd'), true);
@@ -52,6 +57,7 @@ test('isVersionDirectory accepts only safe canonical and immutable version direc
   assert.equal(isVersionDirectory('0.1.16.app-1234', '0.1.17'), false);
   assert.equal(isVersionDirectory('0.1.17.preparing', '0.1.17'), false);
   assert.equal(isVersionDirectory('../0.1.17.app-1234', '0.1.17'), false);
+  assert.equal(isVersionDirectory('0.3.1-nightly.42.a1b2c3d4.app-1234', '0.3.1-nightly.42.a1b2c3d4'), true);
 });
 
 test('validateMetadata accepts a matching immutable application package', () => {
@@ -66,6 +72,11 @@ test('validateMetadata accepts a matching immutable application package', () => 
     sha512: 'checksum',
     size: 123
   });
+});
+
+test('validateMetadata accepts a commit nightly package', () => {
+  const version = '0.3.1-nightly.42.a1b2c3d4';
+  assert.equal(validateMetadata({ version, url: `jss-clips-app-${version}-x64.zip`, sha512: 'checksum', size: 123 }).version, version);
 });
 
 test('validateMetadata rejects traversal and mismatched versions', () => {

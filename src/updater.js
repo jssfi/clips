@@ -6,9 +6,9 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 const APP_EXECUTABLE = 'jss clips.exe';
-const UPDATE_FILE = /^jss-clips-app-(\d+\.\d+\.\d+)-x64\.zip$/;
-const PREPARATION_DIRECTORY = /^\d+\.\d+\.\d+\.preparing(?:-.+)?$/;
-const VERSION_DIRECTORY = /^(\d+\.\d+\.\d+)(?:\.app-[A-Za-z0-9-]+)?$/;
+const SEMVER = '\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?';
+const PREPARATION_DIRECTORY = new RegExp(`^${SEMVER}\\.preparing(?:-.+)?$`);
+const VERSION_DIRECTORY = new RegExp(`^(${SEMVER})(?:\\.app-[A-Za-z0-9-]+)?$`);
 const RETRYABLE_FILE_ERRORS = new Set(['EACCES', 'EBUSY', 'ENOTEMPTY', 'EPERM']);
 
 function updateRoot(app) {
@@ -20,8 +20,11 @@ function activeVersionPath(app) {
 }
 
 function isVersionDirectory(name, version) {
-  const match = VERSION_DIRECTORY.exec(String(name || ''));
-  return Boolean(match && match[1] === version);
+  const candidate = String(name || '');
+  return Boolean(parseVersion(version) && (
+    candidate === version
+    || (candidate.startsWith(`${version}.app-`) && /^[A-Za-z0-9-]+$/.test(candidate.slice(version.length + 5)))
+  ));
 }
 
 function versionDirectory(app, version, directory = version) {
@@ -36,8 +39,9 @@ function versionExecutable(app, version, directory = version) {
 }
 
 function parseVersion(value) {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(value || ''));
-  return match ? match.slice(1).map(Number) : null;
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(String(value || ''));
+  if (!match) return null;
+  return { core: match.slice(1, 4).map(Number), prerelease: match[4]?.split('.') || [] };
 }
 
 function compareVersions(left, right) {
@@ -45,7 +49,18 @@ function compareVersions(left, right) {
   const b = parseVersion(right);
   if (!a || !b) return 0;
   for (let index = 0; index < 3; index += 1) {
-    if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
+    if (a.core[index] !== b.core[index]) return a.core[index] > b.core[index] ? 1 : -1;
+  }
+  if (!a.prerelease.length || !b.prerelease.length) return a.prerelease.length === b.prerelease.length ? 0 : (a.prerelease.length ? -1 : 1);
+  for (let index = 0; index < Math.max(a.prerelease.length, b.prerelease.length); index += 1) {
+    if (a.prerelease[index] === undefined) return -1;
+    if (b.prerelease[index] === undefined) return 1;
+    if (a.prerelease[index] === b.prerelease[index]) continue;
+    const aNumber = /^\d+$/.test(a.prerelease[index]) ? Number(a.prerelease[index]) : null;
+    const bNumber = /^\d+$/.test(b.prerelease[index]) ? Number(b.prerelease[index]) : null;
+    if (aNumber !== null && bNumber !== null) return aNumber > bNumber ? 1 : -1;
+    if (aNumber !== null || bNumber !== null) return aNumber !== null ? -1 : 1;
+    return a.prerelease[index] > b.prerelease[index] ? 1 : -1;
   }
   return 0;
 }
@@ -207,8 +222,7 @@ function validateMetadata(value) {
   if (!value || !parseVersion(value.version) || typeof value.sha512 !== 'string') {
     throw new Error('The update feed returned invalid metadata.');
   }
-  const match = UPDATE_FILE.exec(String(value.url || ''));
-  if (!match || match[1] !== value.version) {
+  if (String(value.url || '') !== `jss-clips-app-${value.version}-x64.zip`) {
     throw new Error('The update feed returned an invalid package name.');
   }
   const size = Number(value.size);
