@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.3-4ca718a7",
     "title": "Privacy-first About page",
     "changes": [
       "Redesigned About settings to put privacy and data controls first, with a clear statement that recordings remain on your computer.",
