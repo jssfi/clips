@@ -2,6 +2,7 @@
 // This host links with OBS Studio/libobs, which is licensed under GPL-2.0-or-later.
 
 #include <windows.h>
+#include <dxgi1_6.h>
 
 #include <obs.h>
 #include <obs-audio-controls.h>
@@ -82,6 +83,107 @@ static std::wstring utf8_to_wide(const std::string &value)
 	std::wstring output(size, L'\0');
 	MultiByteToWideChar(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), output.data(), size);
 	return output;
+}
+
+static HMONITOR application_monitor(obs_data_t *application)
+{
+	DataRef bounds(obs_data_get_obj(application, "bounds"));
+	POINT point = {};
+	if (bounds) {
+		point.x = static_cast<LONG>(obs_data_get_int(bounds, "x") + obs_data_get_int(bounds, "width") / 2);
+		point.y = static_cast<LONG>(obs_data_get_int(bounds, "y") + obs_data_get_int(bounds, "height") / 2);
+	}
+	return MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+}
+
+struct MonitorVideoLevels {
+	bool hdr = false;
+	float sdr_white_nits = 0.0f;
+	float hdr_peak_nits = 0.0f;
+};
+
+static float monitor_peak_nits(HMONITOR monitor)
+{
+	IDXGIFactory1 *factory = nullptr;
+	if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void **>(&factory))))
+		return 0.0f;
+	float peak_nits = 0.0f;
+	for (UINT adapter_index = 0; !peak_nits; ++adapter_index) {
+		IDXGIAdapter1 *adapter = nullptr;
+		if (FAILED(factory->EnumAdapters1(adapter_index, &adapter)) || !adapter)
+			break;
+		for (UINT output_index = 0; !peak_nits; ++output_index) {
+			IDXGIOutput *output = nullptr;
+			if (FAILED(adapter->EnumOutputs(output_index, &output)) || !output)
+				break;
+			DXGI_OUTPUT_DESC output_desc = {};
+			if (SUCCEEDED(output->GetDesc(&output_desc)) && output_desc.Monitor == monitor) {
+				IDXGIOutput6 *output6 = nullptr;
+				if (SUCCEEDED(output->QueryInterface(__uuidof(IDXGIOutput6), reinterpret_cast<void **>(&output6)))) {
+					DXGI_OUTPUT_DESC1 desc = {};
+					if (SUCCEEDED(output6->GetDesc1(&desc)) && desc.MaxLuminance > 0.0f)
+						peak_nits = desc.MaxLuminance;
+					output6->Release();
+				}
+			}
+			output->Release();
+		}
+		adapter->Release();
+	}
+	factory->Release();
+	return peak_nits;
+}
+
+static MonitorVideoLevels monitor_video_levels(HMONITOR monitor)
+{
+	MonitorVideoLevels levels = {};
+	MONITORINFOEXW monitor_info = {};
+	monitor_info.cbSize = sizeof(monitor_info);
+	if (!GetMonitorInfoW(monitor, &monitor_info))
+		return levels;
+
+	UINT32 path_count = 0;
+	UINT32 mode_count = 0;
+	LONG result = GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &path_count, &mode_count);
+	if (result != ERROR_SUCCESS)
+		return levels;
+	std::vector<DISPLAYCONFIG_PATH_INFO> paths(path_count);
+	std::vector<DISPLAYCONFIG_MODE_INFO> modes(mode_count);
+	result = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &path_count, paths.data(), &mode_count, modes.data(), nullptr);
+	if (result != ERROR_SUCCESS)
+		return levels;
+
+	for (UINT32 index = 0; index < path_count; ++index) {
+		DISPLAYCONFIG_SOURCE_DEVICE_NAME source_name = {};
+		source_name.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+		source_name.header.size = sizeof(source_name);
+		source_name.header.adapterId = paths[index].sourceInfo.adapterId;
+		source_name.header.id = paths[index].sourceInfo.id;
+		if (DisplayConfigGetDeviceInfo(&source_name.header) != ERROR_SUCCESS ||
+		    _wcsicmp(source_name.viewGdiDeviceName, monitor_info.szDevice) != 0)
+			continue;
+
+		DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO color_info = {};
+		color_info.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO;
+		color_info.header.size = sizeof(color_info);
+		color_info.header.adapterId = paths[index].targetInfo.adapterId;
+		color_info.header.id = paths[index].targetInfo.id;
+		if (DisplayConfigGetDeviceInfo(&color_info.header) != ERROR_SUCCESS || !color_info.advancedColorEnabled)
+			return levels;
+		levels.hdr = true;
+
+		DISPLAYCONFIG_SDR_WHITE_LEVEL white_level = {};
+		white_level.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SDR_WHITE_LEVEL;
+		white_level.header.size = sizeof(white_level);
+		white_level.header.adapterId = paths[index].targetInfo.adapterId;
+		white_level.header.id = paths[index].targetInfo.id;
+		if (DisplayConfigGetDeviceInfo(&white_level.header) != ERROR_SUCCESS)
+			return levels;
+		levels.sdr_white_nits = static_cast<float>(white_level.SDRWhiteLevel) * 80.0f / 1000.0f;
+		levels.hdr_peak_nits = monitor_peak_nits(monitor);
+		return levels;
+	}
+	return levels;
 }
 
 static std::string path_utf8(const fs::path &value)
@@ -438,9 +540,6 @@ private:
 		video.colorspace = VIDEO_CS_709;
 		video.range = VIDEO_RANGE_PARTIAL;
 		video.scale_type = OBS_SCALE_BICUBIC;
-		// Keep HDR sources in scRGB until libobs can tone-map them. Reference white
-		// prevents bright game content from clipping during the Rec. 709 conversion.
-		obs_set_video_levels(80.0f, 400.0f);
 		const int result = obs_reset_video(&video);
 		if (result != OBS_VIDEO_SUCCESS)
 			throw std::runtime_error("libobs failed to initialize Direct3D video (error " +
@@ -598,6 +697,27 @@ private:
 
 		DataArrayRef applications(obs_data_get_array(request, "applications"));
 		const size_t count = applications ? obs_data_array_count(applications) : 0;
+		for (size_t index = 0; index < count; ++index) {
+			DataRef application(obs_data_array_item(applications, index));
+			if (!obs_data_get_bool(application, "captureVideo"))
+				continue;
+			const HMONITOR monitor = application_monitor(application);
+			const MonitorVideoLevels levels = monitor_video_levels(monitor);
+			const float sdr_white_nits = levels.sdr_white_nits > 0.0f
+				? levels.sdr_white_nits : obs_get_video_sdr_white_level();
+			const float hdr_peak_nits = levels.hdr_peak_nits > 0.0f
+				? levels.hdr_peak_nits : obs_get_video_hdr_nominal_peak_level();
+			if (levels.hdr)
+				obs_set_video_levels(sdr_white_nits, hdr_peak_nits);
+			MONITORINFOEXA monitor_info = {};
+			monitor_info.cbSize = sizeof(monitor_info);
+			GetMonitorInfoA(monitor, &monitor_info);
+			fprintf(stderr, "[capture-host] video source=%s display=%s hdr=%s sdr-white=%.0f nits hdr-peak=%.0f nits\n",
+				obs_data_get_string(application, "name"), monitor_info.szDevice, levels.hdr ? "true" : "false",
+				sdr_white_nits, hdr_peak_nits);
+			fflush(stderr);
+			break;
+		}
 		const std::string microphone_id = obs_data_get_string(request, "microphoneDeviceId");
 		const bool has_microphone = !microphone_id.empty() && microphone_id != "disabled";
 		size_t audio_application_count = 0;
@@ -642,15 +762,7 @@ private:
 						obs_data_set_bool(settings, "client_area", true);
 						obs_data_set_bool(settings, "force_sdr", false);
 					} else {
-						DataRef bounds(obs_data_get_obj(application, "bounds"));
-						POINT point = {};
-						if (bounds) {
-							point.x = static_cast<LONG>(obs_data_get_int(bounds, "x") +
-										 obs_data_get_int(bounds, "width") / 2);
-							point.y = static_cast<LONG>(obs_data_get_int(bounds, "y") +
-										 obs_data_get_int(bounds, "height") / 2);
-						}
-						const HMONITOR monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+						const HMONITOR monitor = application_monitor(application);
 						MONITORINFOEXA monitor_info = {};
 						monitor_info.cbSize = sizeof(monitor_info);
 						if (!GetMonitorInfoA(monitor, &monitor_info))

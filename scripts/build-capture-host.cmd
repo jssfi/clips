@@ -39,7 +39,7 @@ cl /nologo /EHsc /std:c++17 /O2 /utf-8 ^
   /I"%SDK%\libobs" ^
   "%ROOT%\native\capture-host.cpp" ^
   /link /SUBSYSTEM:WINDOWS /OUT:"%OUT%\clips-capture-host.exe" ^
-  "%DEV%\obs.lib" user32.lib shell32.lib ole32.lib
+  "%DEV%\obs.lib" user32.lib shell32.lib ole32.lib dxgi.lib
 if errorlevel 1 exit /b 1
 copy /y "%OUT%\clips-capture-host.exe" "%LIBOBS%\bin\64bit\clips-capture-host.exe" >nul
 if errorlevel 1 exit /b 1
