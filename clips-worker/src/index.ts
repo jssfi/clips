@@ -27,13 +27,20 @@ export default {
     if (pathname === '/telemetry' || pathname.startsWith('/telemetry/')) {
       return serveTelemetry(withoutPrefix(request, '/telemetry'), env.TELEMETRY);
     }
-    if (pathname === '/download') {
-      const metadata = await env.UPDATES.get('releases/latest.yml');
-      const installer = metadata && /^path:\s*([^\r\n]+)$/m.exec(await metadata.text())?.[1]?.trim();
-      if (!installer || installer.includes('/') || installer.includes('\\')) {
+    if (pathname === '/download' || pathname === '/download/stable' || pathname === '/download/setup') {
+      const metadata = await env.UPDATES.get('releases/stable/latest.yml');
+      const version = metadata && /^version:\s*([^\r\n]+)$/m.exec(await metadata.text())?.[1]?.trim();
+      if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
         return new Response('The Windows download is temporarily unavailable.', { status: 503 });
       }
-      return Response.redirect(new URL(`/cdn/${installer}`, request.url), 307);
+      const installer = `jss-clips-setup-${version}-x64.exe`;
+      return new Response(null, {
+        status: 307,
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+          Location: new URL(`/cdn/stable/${installer}`, request.url).toString()
+        }
+      });
     }
     if (pathname === '/source') {
       const metadata = await env.UPDATES.get('releases/latest.json');

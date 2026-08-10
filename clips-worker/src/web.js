@@ -130,6 +130,6 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="web.css">');
-    document.body.insertAdjacentHTML('beforeend', '<aside class="web-demo-banner"><span><strong>Browser demo</strong> — explore the interface; recording and playback need the Windows app.</span><a href="/download">Get the app</a></aside>');
+    document.body.insertAdjacentHTML('beforeend', '<aside class="web-demo-banner"><span><strong>Browser demo</strong> — explore the interface; recording and playback need the Windows app.</span><a href="/download/setup">Get the app</a></aside>');
   });
 })();
