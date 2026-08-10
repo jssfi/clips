@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.3-fa596f29",
     "title": "Reliable update restarts",
     "changes": [
       "Clips now opens its main window after a user-triggered update restart, even when it originally launched in the background.",

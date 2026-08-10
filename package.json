@@ -1,6 +1,6 @@
 {
   "name": "clips",
-  "version": "0.3.1-nightly.14.d34e1507",
+  "version": "0.3.1-nightly.16.fa596f29",
   "description": "Automatic game recording and clipping with a private libobs capture engine",
   "author": "jss",
   "main": "src/main.js",
