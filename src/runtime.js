@@ -44,6 +44,19 @@ const REQUIRED_FILES = [
   path.join('libmpv', 'mpv-host.exe'),
   path.join('libmpv', 'libmpv-2.dll')
 ];
+const RETRYABLE_COPY_ERRORS = new Set(['EACCES', 'EBUSY', 'EPERM']);
+
+async function copyFileWithRetries(source, destination) {
+  for (let attempt = 0; attempt <= 20; attempt += 1) {
+    try {
+      await fs.promises.copyFile(source, destination);
+      return;
+    } catch (error) {
+      if (!RETRYABLE_COPY_ERRORS.has(error?.code) || attempt === 20) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.min(500, 50 * (attempt + 1))));
+    }
+  }
+}
 
 function runtimeRoot(localAppData) {
   return path.join(localAppData, 'jss-clips', 'runtime', `v${RUNTIME_VERSION}`);
@@ -77,7 +90,7 @@ async function copyPrivateLibobs(source, destination) {
     await fs.promises.copyFile(path.join(sourceBin, name), path.join(destinationBin, name));
   }
   for (const name of LIBOBS_PLUGINS) {
-    await fs.promises.copyFile(
+    await copyFileWithRetries(
       path.join(sourcePlugins, `${name}.dll`),
       path.join(destinationPlugins, `${name}.dll`)
     );
@@ -165,7 +178,7 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
   const installedCaptureHost = path.join(root, 'libobs', 'bin', '64bit', 'clips-capture-host.exe');
   if (fs.existsSync(bundledCaptureHost)) {
     await fs.promises.mkdir(path.dirname(installedCaptureHost), { recursive: true });
-    await fs.promises.copyFile(bundledCaptureHost, installedCaptureHost);
+    await copyFileWithRetries(bundledCaptureHost, installedCaptureHost);
     installed = true;
   }
 
@@ -179,12 +192,18 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
     for (const name of ['obs-filters.dll', 'nv-filters.dll']) {
       const bundledPlugin = path.join(bundledMicrophoneFilters, name);
       if (fs.existsSync(bundledPlugin))
-        await fs.promises.copyFile(bundledPlugin, path.join(installedPlugins, name));
+        await copyFileWithRetries(bundledPlugin, path.join(installedPlugins, name));
     }
     const bundledFilterData = path.join(bundledMicrophoneFilters, 'data');
     if (fs.existsSync(bundledFilterData)) {
       await fs.promises.cp(bundledFilterData,
         path.join(root, 'libobs', 'data', 'obs-plugins', 'obs-filters'),
+        { recursive: true, force: true });
+    }
+    const bundledNvidiaFilterData = path.join(bundledMicrophoneFilters, 'nv-data');
+    if (fs.existsSync(bundledNvidiaFilterData)) {
+      await fs.promises.cp(bundledNvidiaFilterData,
+        path.join(root, 'libobs', 'data', 'obs-plugins', 'nv-filters'),
         { recursive: true, force: true });
     }
     installed = true;

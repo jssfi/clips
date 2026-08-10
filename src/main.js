@@ -1118,6 +1118,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return;
   systemInformation = await collectSystemInformation();
   logger.info('system information', systemInformation);
   settings = loadSettings();
@@ -1162,6 +1163,12 @@ ipcMain.handle('update:install', async () => {
     app.exit(0);
     return true;
   }
+  const capture = await obs.status();
+  if (capture.recording || capture.replayBuffer) {
+    await obs.stopSession().catch(error => logger.warn('capture stop before update failed', { message: error.message }));
+    sessionDate = '';
+  }
+  await obs.disconnect().catch(error => logger.warn('capture shutdown before update failed', { message: error.message }));
   return stagedUpdater?.restart() || false;
 });
 ipcMain.handle('update:check', () => {

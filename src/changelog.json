@@ -1,5 +1,14 @@
 [
   {
+    "version": "next",
+    "title": "Native capture fixes that actually stick",
+    "changes": [
+      "Prevented older Clips executables from overwriting the shared HDR and microphone engine after losing the single-instance lock.",
+      "Update restarts now shut down the capture engine before replacing native components, with retries for briefly locked files.",
+      "Added explicit diagnostics confirming whether NVIDIA microphone noise removal is attached and enabled."
+    ]
+  },
+  {
     "version": "0.3-4ca718a7",
     "title": "Privacy-first About page",
     "changes": [

@@ -31,6 +31,10 @@
       "to": "microphone-filters/data"
     },
     {
+      "from": "vendor/libobs/data/obs-plugins/nv-filters",
+      "to": "microphone-filters/nv-data"
+    },
+    {
       "from": "vendor/libmpv/mpv-host.exe",
       "to": "libmpv/mpv-host.exe"
     },

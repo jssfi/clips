@@ -32,3 +32,8 @@ test('the About page presents privacy before app details and release history', (
   assert.ok(about.indexOf('id="about-privacy"') < about.indexOf('id="changelog"'));
   assert.match(about, /Recordings stay on this computer/);
 });
+
+test('secondary instances cannot initialize or overwrite the shared runtime', () => {
+  const main = source('main.js');
+  assert.match(main, /app\.whenReady\(\)\.then\(async \(\) => \{\s*if \(!gotSingleInstanceLock\) return;/);
+});

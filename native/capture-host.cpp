@@ -382,7 +382,13 @@ public:
 			obs_source_t *filter = obs_source_get_filter_by_name(source, "Clips NVIDIA Noise Removal");
 			if (filter) {
 				obs_source_set_enabled(filter, microphone_nvidia_noise_removal_);
+				fprintf(stderr, "[capture-host] NVIDIA microphone filter enabled=%s\n",
+					microphone_nvidia_noise_removal_ ? "true" : "false");
+				fflush(stderr);
 				obs_source_release(filter);
+			} else {
+				fprintf(stderr, "[capture-host] NVIDIA microphone filter toggle ignored: filter is not attached\n");
+				fflush(stderr);
 			}
 		}
 	}
@@ -849,9 +855,15 @@ private:
 				if (nvidia_filter) {
 					obs_source_set_enabled(nvidia_filter, microphone_nvidia_noise_removal_);
 					obs_source_filter_add(source, nvidia_filter);
+					fprintf(stderr, "[capture-host] NVIDIA microphone filter attached enabled=%s\n",
+						microphone_nvidia_noise_removal_ ? "true" : "false");
+					fflush(stderr);
 				} else {
 					fprintf(stderr, "[capture-host] NVIDIA microphone filter could not initialize; continuing without it\n");
 				}
+			} else {
+				fprintf(stderr, "[capture-host] NVIDIA microphone filter unavailable in the loaded runtime\n");
+				fflush(stderr);
 			}
 			DataRef gate_settings(obs_data_create());
 			microphone_noise_gate_db_ = static_cast<float>(std::clamp<int64_t>(
