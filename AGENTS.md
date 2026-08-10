@@ -30,3 +30,17 @@ Only publish stable when the user explicitly approves that specific promotion. F
 7. Verify both nightly metadata URLs, both `/stable` metadata URLs, and every referenced artifact.
 
 Never finish an application-change task with only source edits unless the user explicitly says not to rebuild or not to publish.
+
+## Backward compatibility for released clients
+
+Treat every publicly distributed Clips version as an installed client that may still need to update. A change is not complete merely because the newest source and newest updater work together.
+
+Before changing update URLs, redirects, metadata schemas, version formats, artifact names, signing requirements, runtime layouts, migration behavior, or installer contents:
+
+1. Inspect the updater and runtime behavior in earlier public releases, including the oldest version reasonably expected to remain installed.
+2. Preserve legacy endpoints and make metadata changes additive whenever possible. Do not introduce version strings, required fields, redirects, or artifact names that an older updater rejects.
+3. Test representative upgrades from earlier stable and nightly builds to the proposed release, including update discovery, download, integrity validation, installation, restart, runtime migration, and rollback behavior.
+4. If direct compatibility is impossible, publish and retain a compatible bridge release before changing the feed. Older clients must have an automated upgrade path to that bridge, and the bridge must understand the new format.
+5. Do not remove metadata or artifacts still needed by supported upgrade paths. Keep a documented manual recovery installer as a fallback, but do not treat manual installation as a substitute for updater compatibility.
+
+Release verification must cover the compatibility matrix, not only a fresh install and an update from the immediately previous development build.
