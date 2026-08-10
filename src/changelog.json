@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Focused editor settings",
+    "changes": [
+      "Removed the unfinished custom CDN upload integration and its credential settings.",
+      "Renamed Integrations settings to Editor so the remaining trim-quality option is easier to find."
+    ]
+  },
+  {
     "version": "0.3-f89d9b5d",
     "title": "Complete desktop recordings",
     "changes": [

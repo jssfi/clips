@@ -57,7 +57,6 @@ contextBridge.exposeInMainWorld('clips', {
   getAudioTracks: (filePath) => ipcRenderer.invoke('recording:audio-tracks', filePath),
   mixRecordingAudio: (filePath, adjustments, replace) => ipcRenderer.invoke('recording:audio-mix', filePath, adjustments, replace),
   onAudioMixProgress: (callback) => ipcRenderer.on('audio:mix-progress', (_event, progress) => callback(progress)),
-  uploadRecording: (filePath) => ipcRenderer.invoke('recording:upload', filePath),
   chooseFolder: () => ipcRenderer.invoke('folder:choose'),
   openLogs: () => ipcRenderer.invoke('logs:open'),
   listProcesses: () => ipcRenderer.invoke('processes:list'),

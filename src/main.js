@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut, Tray, Menu, nativeImage, screen, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut, Tray, Menu, nativeImage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -46,7 +46,7 @@ const DEFAULTS = {
   obsRecordingQuality: 'HQ', obsResolution: '1920x1080', obsFps: 60, obsFormat: 'mkv',
   microphoneDeviceId: 'disabled', microphoneVolumePercent: 100, microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
-  cdnUrl: 'https://cdn.jss.fi', cdnPassword: '', trimBitrate: 'original',
+  trimBitrate: 'original',
   nightlyUpdates: false, telemetryMode: 'pending'
 };
 
@@ -148,10 +148,6 @@ function loadSettings() {
     const legacyPath = path.join(legacyUserDataPath, 'settings.json');
     const sourcePath = fs.existsSync(currentPath) ? currentPath : legacyPath;
     const saved = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
-    if (!saved.cdnPassword && saved.cdnPasswordEncrypted && safeStorage.isEncryptionAvailable()) {
-      try { saved.cdnPassword = safeStorage.decryptString(Buffer.from(saved.cdnPasswordEncrypted, 'base64')); }
-      catch { saved.cdnPassword = ''; }
-    }
     if (saved.clipLengthSeconds == null) saved.clipLengthSeconds = Number(saved.stopDelaySeconds) || 60;
     const {
       freezeCaptureWhenUnfocused: _removed,
@@ -159,6 +155,9 @@ function loadSettings() {
       obsPassword: _removedPassword,
       obsSettingsManaged: _removedManagedFlag,
       microphoneNoiseSuppression: _removedNoiseSuppression,
+      cdnUrl: _removedCdnUrl,
+      cdnPassword: _removedCdnPassword,
+      cdnPasswordEncrypted: _removedCdnPasswordEncrypted,
       ...currentSettings
     } = saved;
     return { ...DEFAULTS, ...currentSettings };
@@ -170,10 +169,6 @@ function persist() {
   const temporary = `${target}.working`;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const stored = { ...settings };
-  if (stored.cdnPassword && safeStorage.isEncryptionAvailable()) {
-    stored.cdnPasswordEncrypted = safeStorage.encryptString(stored.cdnPassword).toString('base64');
-    delete stored.cdnPassword;
-  }
   fs.writeFileSync(temporary, `${JSON.stringify(stored, null, 2)}\n`);
   fs.renameSync(temporary, target);
 }
@@ -737,79 +732,6 @@ async function trimRecording(filePath, startSeconds, endSeconds, requestedBitrat
     throw new Error(error.stderr?.trim() || 'FFmpeg could not trim this recording.');
   }
   return outputPath;
-}
-const MULTIPART_CHUNK_BYTES = 25 * 1024 * 1024;
-function cdnHeaders(cookie, upload = {}) {
-  return {
-    cookie,
-    'content-type': 'application/json',
-    ...(upload.key ? { 'x-upload-key': upload.key, 'x-upload-id': upload.uploadId } : {})
-  };
-}
-async function cdnJson(url, init) {
-  const response = await fetch(url, init);
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || `CDN upload failed (${response.status}).`);
-  return result;
-}
-async function cdnLogin(baseUrl, password) {
-  const response = await fetch(`${baseUrl}/login`, {
-    method: 'POST', redirect: 'manual',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ password })
-  }).catch(() => { throw new Error(`Could not reach ${baseUrl}.`); });
-  if (response.status !== 303) throw new Error('CDN login failed. Check the password in Settings.');
-  const cookie = response.headers.get('set-cookie');
-  if (!cookie) throw new Error('CDN login did not return a session.');
-  return cookie.split(';')[0];
-}
-async function uploadToCdn(filePath) {
-  const sourcePath = validateRecordingPath(filePath);
-  const baseUrl = String(settings.cdnUrl || '').trim().replace(/\/+$/, '');
-  if (!baseUrl || !settings.cdnPassword) throw new Error('Add your CDN URL and password in Settings first.');
-  const uploadPath = await previewPath(sourcePath);
-  const stat = fs.statSync(uploadPath);
-  const name = `${path.basename(sourcePath, path.extname(sourcePath))}.mp4`;
-  const cookie = await cdnLogin(baseUrl, settings.cdnPassword);
-  if (stat.size <= MULTIPART_CHUNK_BYTES) {
-    const response = await fetch(`${baseUrl}/upload`, {
-      method: 'POST',
-      headers: { cookie, 'content-type': 'video/mp4', 'content-length': String(stat.size), 'x-file-name': encodeURIComponent(name) },
-      body: fs.createReadStream(uploadPath), duplex: 'half'
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || `CDN upload failed (${response.status}).`);
-    return result.link;
-  }
-  const upload = await cdnJson(`${baseUrl}/upload/multipart/start`, {
-    method: 'POST',
-    headers: { cookie, 'content-type': 'video/mp4', 'x-file-name': encodeURIComponent(name), 'x-file-size': String(stat.size) }
-  });
-  const parts = [];
-  const file = await fs.promises.open(uploadPath, 'r');
-  try {
-    for (let offset = 0, partNumber = 1; offset < stat.size; offset += MULTIPART_CHUNK_BYTES, partNumber += 1) {
-      const end = Math.min(offset + MULTIPART_CHUNK_BYTES, stat.size) - 1;
-      const part = await cdnJson(`${baseUrl}/upload/multipart/part`, {
-        method: 'PUT',
-        headers: {
-          ...cdnHeaders(cookie, upload), 'content-type': 'application/octet-stream',
-          'content-length': String(end - offset + 1), 'x-part-number': String(partNumber)
-        },
-        body: file.createReadStream({ start: offset, end, autoClose: false }), duplex: 'half'
-      });
-      parts.push(part);
-    }
-    const complete = await cdnJson(`${baseUrl}/upload/multipart/complete`, {
-      method: 'POST', headers: cdnHeaders(cookie, upload), body: JSON.stringify({ parts })
-    });
-    return complete.link;
-  } catch (error) {
-    await fetch(`${baseUrl}/upload/multipart/abort`, { method: 'POST', headers: cdnHeaders(cookie, upload) }).catch(() => {});
-    throw error;
-  } finally {
-    await file.close();
-  }
 }
 async function processes() {
   const script = `Add-Type @'
@@ -1467,7 +1389,6 @@ ipcMain.handle('recording:audio-mix', async (_event, filePath, adjustments, repl
   await broadcast();
   return { outputPath, state: await state() };
 });
-ipcMain.handle('recording:upload', async (_event, filePath) => ({ link: await uploadToCdn(filePath) }));
 ipcMain.handle('folder:choose', async () => { const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }); return r.canceled ? null : r.filePaths[0]; });
 ipcMain.handle('logs:open', () => shell.showItemInFolder(logger.filePath));
 ipcMain.handle('processes:list', processes);

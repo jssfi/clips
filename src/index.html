@@ -62,9 +62,9 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>
             <span>Storage</span>
           </button>
-          <button class="settings-nav-item" type="button" data-settings-group="integrations" aria-label="Integrations">
+          <button class="settings-nav-item" type="button" data-settings-group="integrations" aria-label="Editor">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>
-            <span>Integrations</span>
+            <span>Editor</span>
           </button>
           <button class="settings-nav-item" type="button" data-settings-group="advanced" aria-label="Advanced">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3 3M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10zM12 20h8"/></svg>
@@ -207,14 +207,7 @@
           </div>
 
           <div id="settings-integrations" class="settings-group" data-settings-page="integrations">
-            <div class="settings-heading"><h1>Integrations</h1><p>Connect uploads and the native video editor.</p></div>
-            <section class="settings-section">
-              <div class="settings-section-title"><h2>CDN upload</h2><p>Uploads happen only when you press Upload on a recording.</p></div>
-              <div class="settings-block">
-                <label class="settings-row" for="cdn-url"><span><strong>CDN URL</strong><small>Endpoint used to upload clips.</small></span><input id="cdn-url" name="cdnUrl" type="url" autocomplete="url" placeholder="https://cdn.jss.fi"></label>
-                <label class="settings-row" for="cdn-password"><span><strong>CDN password</strong><small>Authentication password sent with uploads.</small></span><input id="cdn-password" name="cdnPassword" type="password" autocomplete="off"></label>
-              </div>
-            </section>
+            <div class="settings-heading"><h1>Editor</h1><p>Configure the built-in video editor.</p></div>
             <section class="settings-section">
               <div class="settings-section-title"><h2>Video player</h2><p>MPV is included with Clips and needs no separate installation.</p></div>
               <div class="settings-block">

@@ -131,8 +131,6 @@ const values = () => ({
     .map((x) => x.trim())
     .filter(Boolean),
   gameExecutables: state.settings.gameExecutables,
-  cdnUrl: $("cdn-url").value,
-  cdnPassword: $("cdn-password").value,
   trimBitrate: $("trim-bitrate").value,
   nightlyUpdates: $("nightly-updates").checked,
   telemetryMode: $("telemetry-mode").value,
@@ -276,8 +274,6 @@ function render(s, fill = false) {
     updateMicrophoneNoiseGate();
     refreshMicrophones(s.settings.microphoneDeviceId);
     $("audio-exes").value = s.settings.audioExecutables.join("\n");
-    $("cdn-url").value = s.settings.cdnUrl || "https://cdn.jss.fi";
-    $("cdn-password").value = s.settings.cdnPassword || "";
     $("trim-bitrate").value = s.settings.trimBitrate || "original";
     $("nightly-updates").checked = !!s.settings.nightlyUpdates;
     $("telemetry-mode").value = ["diagnostics", "version", "off"].includes(s.settings.telemetryMode) ? s.settings.telemetryMode : "off";
@@ -960,45 +956,6 @@ window.clips.onMpvFrame(frame => {
   $("mpv-loading").classList.add("hidden");
 });
 $("mpv-canvas").addEventListener("click", togglePlayback);
-const uploadRecording = async (event) => {
-  const button = event.target.closest("[data-upload-path]");
-  if (!button || button.disabled) return;
-  const originalHtml = button.innerHTML;
-  const originalLabel = button.getAttribute("aria-label");
-  button.disabled = true;
-  button.classList.add("busy");
-  button.setAttribute("aria-label", "Uploading");
-  button.title = "Uploading…";
-  try {
-    const { link } = await window.clips.uploadRecording(button.dataset.uploadPath);
-    await navigator.clipboard.writeText(link);
-    button.classList.remove("busy");
-    button.classList.add("success");
-    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
-    button.setAttribute("aria-label", "Link copied");
-    button.title = link;
-    setTimeout(() => {
-      button.innerHTML = originalHtml;
-      button.classList.remove("success");
-      button.setAttribute("aria-label", originalLabel);
-      button.title = "Upload";
-      button.disabled = false;
-    }, 2500);
-  } catch (error) {
-    button.classList.remove("busy");
-    button.classList.add("failed");
-    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>';
-    button.setAttribute("aria-label", "Upload failed");
-    button.title = error.message;
-    setTimeout(() => {
-      button.innerHTML = originalHtml;
-      button.classList.remove("failed");
-      button.setAttribute("aria-label", originalLabel);
-      button.title = "Upload";
-      button.disabled = false;
-    }, 3000);
-  }
-};
 const toggleFavorite = async (event) => {
   const button = event.target.closest("[data-favorite-path]");
   if (!button || button.disabled) return;
