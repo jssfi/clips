@@ -10,11 +10,16 @@ $workerRoot = Split-Path $PSScriptRoot -Parent
 $projectRoot = Split-Path $workerRoot -Parent
 $dist = Join-Path $projectRoot 'dist'
 $envFile = Join-Path $projectRoot '.env'
-if (-not $Bucket -and (Test-Path -LiteralPath $envFile)) {
+if (Test-Path -LiteralPath $envFile) {
     foreach ($line in Get-Content -LiteralPath $envFile) {
-        if ($line -match '^\s*CLIPS_UPDATE_BUCKET\s*=\s*(.+?)\s*$') {
-            $Bucket = $Matches[1].Trim('"', "'")
-            break
+        if ($line -match '^\s*(CLIPS_UPDATE_BUCKET|CLIPS_R2_ACCOUNT_ID|CLIPS_R2_ACCESS_KEY_ID|CLIPS_R2_SECRET_ACCESS_KEY)\s*=\s*(.+?)\s*$') {
+            $name = $Matches[1]
+            $value = $Matches[2].Trim('"', "'")
+            if ($name -eq 'CLIPS_UPDATE_BUCKET' -and -not $Bucket) {
+                $Bucket = $value
+            } elseif (-not [Environment]::GetEnvironmentVariable($name, 'Process')) {
+                [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+            }
         }
     }
 }
