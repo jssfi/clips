@@ -1,6 +1,6 @@
 [
   {
-    "version": "0.3-626185d4",
+    "version": "0.4",
     "title": "Authenticated application updates",
     "changes": [
       "Application updates now require a valid Ed25519 release signature before Clips downloads or runs them.",
