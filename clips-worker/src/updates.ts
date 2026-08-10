@@ -1,6 +1,6 @@
 const RELEASE_PREFIX = "releases/";
 const VERSIONED_ARTIFACT =
-  /^(?:jss-clips-(?:update|setup|portable)-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-(?:x64|arm64)\.(?:exe|exe\.blockmap)|jss-clips-app-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-x64\.zip)$/;
+  /^(?:jss-clips-(?:update|setup|portable)-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-(?:x64|arm64)\.(?:exe|exe\.blockmap)|jss-clips-app-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-x64\.zip|jss-clips-source-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.zip)$/;
 
 function artifactName(pathname: string): { name: string; key: string } | null {
   let decoded: string;

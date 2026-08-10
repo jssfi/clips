@@ -31,14 +31,20 @@ if (-not $Version) {
 
 $installerName = "jss-clips-update-$Version-x64.exe"
 $appPackageName = "jss-clips-app-$Version-x64.zip"
-$currentArtifacts = @($installerName, "$installerName.blockmap", $appPackageName)
+$sourceName = "jss-clips-source-$Version.zip"
+$currentArtifacts = @($installerName, "$installerName.blockmap", $appPackageName, $sourceName)
 $files = @(
     @{ Name = $installerName; Type = 'application/octet-stream'; Cache = 'public, max-age=31536000, immutable' },
     @{ Name = "$installerName.blockmap"; Type = 'application/octet-stream'; Cache = 'public, max-age=31536000, immutable' },
     @{ Name = $appPackageName; Type = 'application/zip'; Cache = 'public, max-age=31536000, immutable' },
+    @{ Name = $sourceName; Type = 'application/zip'; Cache = 'public, max-age=31536000, immutable' },
     @{ Name = 'latest.yml'; Type = 'text/yaml; charset=utf-8'; Cache = 'no-store, max-age=0' },
     @{ Name = 'latest.json'; Type = 'application/json; charset=utf-8'; Cache = 'no-store, max-age=0' }
 )
+
+foreach ($artifact in $currentArtifacts) {
+    if (-not (Test-Path -LiteralPath (Join-Path $dist $artifact) -PathType Leaf)) { throw "Missing release artifact: $artifact" }
+}
 
 $latest = Get-Content (Join-Path $dist 'latest.yml') -Raw
 if ($latest -notmatch "(?m)^version:\s+$([regex]::Escape($Version))\s*$" -or $latest -notmatch [regex]::Escape($installerName)) {

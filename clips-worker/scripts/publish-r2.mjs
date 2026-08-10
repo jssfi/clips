@@ -17,7 +17,8 @@ const client = new S3Client({
 const artifactNames = [
   `jss-clips-update-${version}-x64.exe`,
   `jss-clips-update-${version}-x64.exe.blockmap`,
-  `jss-clips-app-${version}-x64.zip`
+  `jss-clips-app-${version}-x64.zip`,
+  `jss-clips-source-${version}.zip`
 ];
 const files = [...artifactNames, 'latest.yml', 'latest.json'];
 const types = { '.exe': 'application/octet-stream', '.blockmap': 'application/octet-stream', '.zip': 'application/zip', '.yml': 'text/yaml; charset=utf-8', '.json': 'application/json; charset=utf-8' };
@@ -47,7 +48,8 @@ for (const releaseChannel of channel === 'both' ? ['nightly', 'stable'] : [chann
     await client.send(new PutObjectCommand({ Bucket: bucket, Key: `${prefix}${name}`, Body: fs.createReadStream(source), ContentType: types[extension], CacheControl: name.startsWith('latest.') ? 'no-store, max-age=0' : 'public, max-age=31536000, immutable' }));
     console.log(`Uploaded ${prefix}${name}`);
   }
-  for (const name of oldNames) if (!artifactNames.includes(name)) {
+  // Source bundles are retained permanently to honor the source offer for old releases.
+  for (const name of oldNames) if (!artifactNames.includes(name) && !name.startsWith('jss-clips-source-')) {
     await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: `${prefix}${name}` }));
     console.log(`Removed ${prefix}${name}`);
   }

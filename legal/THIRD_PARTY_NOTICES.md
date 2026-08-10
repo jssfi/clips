@@ -74,5 +74,7 @@ supported users install NVIDIA's runtime separately under NVIDIA's terms.
 ## License texts and source availability
 
 Copies of GPL-2.0, GPL-3.0, and LGPL-2.1 are included in the installed
-`resources/legal/licenses` directory. See `SOURCE_OFFER.md` alongside this file
-for corresponding-source availability.
+`resources/legal/licenses` directory together with the Clips MIT license, the
+complete 7-Zip 21.07 redistribution notice, the 7zip-bin wrapper license, OBS's
+COPYING file, and MPV's copyright and GPL files. See `SOURCE_OFFER.md` alongside
+this file for versioned corresponding-source availability.

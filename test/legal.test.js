@@ -23,3 +23,18 @@ test('third-party notice records pinned distributed builds', () => {
   const notice = fs.readFileSync(path.join(root, 'legal', 'THIRD_PARTY_NOTICES.md'), 'utf8');
   for (const value of ['31.1.2', 'dd5d17d32', 'f944afd04', '--enable-gpl', '--enable-version3']) assert.match(notice, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
+
+test('legal staging includes first-party and exact upstream notices', () => {
+  const script = fs.readFileSync(path.join(root, 'scripts', 'stage-legal.ps1'), 'utf8');
+  for (const value of ['Clips-MIT.txt', '7-Zip-21.07.txt', '7zip-bin-MIT.txt', 'OBS-Studio-COPYING.txt', 'MPV-Copyright.txt', 'MPV-GPL.txt']) {
+    assert.match(script, new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+});
+
+test('release publishing includes and retains corresponding source bundles', () => {
+  const publisher = fs.readFileSync(path.join(root, 'clips-worker', 'scripts', 'publish-r2.mjs'), 'utf8');
+  const worker = fs.readFileSync(path.join(root, 'clips-worker', 'src', 'updates.ts'), 'utf8');
+  assert.match(publisher, /jss-clips-source-/);
+  assert.match(publisher, /Source bundles are retained permanently/);
+  assert.match(worker, /jss-clips-source-/);
+});

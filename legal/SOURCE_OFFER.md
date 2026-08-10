@@ -1,15 +1,16 @@
 # Corresponding source availability
 
-The preferred source for Clips itself, including its GPL native hosts and build
-scripts, is available from:
+The complete versioned source bundle for the current Clips release is available
+from:
 
-https://github.com/jssfi/clips
+https://clips.jss.fi/source
 
-Exact upstream source and build-recipe links for every pinned OBS, MPV/libmpv,
-and FFmpeg build are listed in `THIRD_PARTY_NOTICES.md`.
+Each bundle contains the exact Clips repository snapshot, GPL native-host source
+and build scripts, pinned OBS, MPV/libmpv, and FFmpeg source archives, and the
+pinned mpv-winbuild-cmake recipes that record dependency revisions and build
+configuration. Exact upstream links are also listed in `THIRD_PARTY_NOTICES.md`.
 
-If an upstream archive referenced there becomes unavailable, open an issue in
-the Clips repository. For at least three years after the corresponding Clips
-binary release, the project will provide a machine-readable copy of the source
-available to it for the covered GPL components for no more than the reasonable
-cost of providing that copy.
+Versioned source bundles are retained for at least three years after the
+corresponding binary release. If a bundle becomes unavailable, open an issue at
+https://github.com/jssfi/clips/issues and the project will provide a
+machine-readable copy for no more than the reasonable cost of providing it.

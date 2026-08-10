@@ -35,6 +35,14 @@ export default {
       }
       return Response.redirect(new URL(`/cdn/${installer}`, request.url), 307);
     }
+    if (pathname === '/source') {
+      const metadata = await env.UPDATES.get('releases/latest.json');
+      const version = metadata ? String((await metadata.json<{ version?: unknown }>()).version || '') : '';
+      if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+        return new Response('The corresponding source is temporarily unavailable.', { status: 503 });
+      }
+      return Response.redirect(new URL(`/cdn/jss-clips-source-${version}.zip`, request.url), 307);
+    }
     if (pathname === '/app' || pathname.startsWith('/app/')) {
       if (pathname === '/app') return Response.redirect(new URL('/app/', request.url), 308);
       return env.ASSETS.fetch(request);

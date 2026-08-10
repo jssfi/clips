@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Complete open-source release materials",
+    "changes": [
+      "Installers now include the complete Clips, 7-Zip, OBS, and MPV license notices, and every release publishes a permanent corresponding-source bundle."
+    ]
+  },
+  {
     "version": "0.4-e53e31cd",
     "title": "Clips in the browser",
     "changes": [
