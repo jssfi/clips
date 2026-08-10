@@ -27,13 +27,37 @@ export default {
     if (pathname === '/telemetry' || pathname.startsWith('/telemetry/')) {
       return serveTelemetry(withoutPrefix(request, '/telemetry'), env.TELEMETRY);
     }
-    if (pathname === '/download' || pathname === '/download/stable' || pathname === '/download/setup') {
+    if (pathname === '/download' || pathname === '/download/' || pathname === '/download/stable' || pathname === '/download/setup') {
       const metadata = await env.UPDATES.get('releases/stable/latest.yml');
       const version = metadata && /^version:\s*([^\r\n]+)$/m.exec(await metadata.text())?.[1]?.trim();
       if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
         return new Response('The Windows download is temporarily unavailable.', { status: 503 });
       }
       const installer = `jss-clips-setup-${version}-x64.exe`;
+      if (pathname === '/download/') {
+        const downloadUrl = `/cdn/stable/${installer}`;
+        return new Response(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="2;url=/app/">
+  <title>Downloading Clips</title>
+</head>
+<body>
+  <p>Your Clips download is starting. <a href="${downloadUrl}">Download it manually</a>.</p>
+  <iframe hidden src="${downloadUrl}" title="Clips installer download"></iframe>
+  <script>setTimeout(() => location.replace('/app/'), 1500);</script>
+</body>
+</html>`, {
+          headers: {
+            'Cache-Control': 'no-store, max-age=0',
+            'Content-Security-Policy': "default-src 'none'; frame-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+            'Content-Type': 'text/html; charset=utf-8',
+            'X-Content-Type-Options': 'nosniff'
+          }
+        });
+      }
       return new Response(null, {
         status: 307,
         headers: {
