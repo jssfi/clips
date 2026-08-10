@@ -4,7 +4,8 @@ This is the only Worker required for current Clips builds. It owns the shared pr
 
 - `/cdn/` serves application updates.
 - `/telemetry/` accepts opt-in telemetry.
-- `/app/` is reserved for the future project site.
+- `/app/` serves an interactive browser demo built from the Electron renderer. Native capture, filesystem, and playback features remain desktop-only.
+- `/download` resolves the current release metadata and redirects to the latest Windows installer.
 
 The legacy hostnames are attached to this Worker and permanently redirect to their corresponding paths on the primary hostname. The old standalone Worker source remains under `legacy/` only as a rollback reference.
 

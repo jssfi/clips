@@ -8,6 +8,7 @@ dist/
 legacy/update-worker/.wrangler/
 legacy/telemetry-worker/.wrangler/
 clips-worker/.wrangler/
+clips-worker/public/
 .clips-release.json
 src/release-config.json
 legal/licenses/

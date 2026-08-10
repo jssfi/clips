@@ -8,7 +8,7 @@ function withoutPrefix(request: Request, prefix: string): Request {
 }
 
 export default {
-  fetch(request, env): Response | Promise<Response> {
+  async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
     if (url.hostname === env.LEGACY_UPDATE_DOMAIN) {
       url.hostname = env.PRIMARY_DOMAIN;
@@ -27,8 +27,17 @@ export default {
     if (pathname === '/telemetry' || pathname.startsWith('/telemetry/')) {
       return serveTelemetry(withoutPrefix(request, '/telemetry'), env.TELEMETRY);
     }
+    if (pathname === '/download') {
+      const metadata = await env.UPDATES.get('latest.yml');
+      const installer = metadata && /^path:\s*([^\r\n]+)$/m.exec(await metadata.text())?.[1]?.trim();
+      if (!installer || installer.includes('/') || installer.includes('\\')) {
+        return new Response('The Windows download is temporarily unavailable.', { status: 503 });
+      }
+      return Response.redirect(new URL(`/cdn/${installer}`, request.url), 307);
+    }
     if (pathname === '/app' || pathname.startsWith('/app/')) {
-      return Response.json({ status: 'coming soon' }, { status: 404, headers: { 'cache-control': 'no-store' } });
+      if (pathname === '/app') return Response.redirect(new URL('/app/', request.url), 308);
+      return env.ASSETS.fetch(request);
     }
     return Response.redirect(new URL('/app/', request.url), 307);
   }

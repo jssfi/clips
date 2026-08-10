@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Clips in the browser",
+    "changes": [
+      "Added an interactive browser demo at clips.jss.fi/app so the interface can be explored without installing the Windows app."
+    ]
+  },
+  {
     "version": "0.4",
     "title": "Authenticated application updates",
     "changes": [

@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:web": "node scripts/build-web.mjs",
     "config": "node ../scripts/write-worker-config.js clips-worker",
-    "check": "npm run config && wrangler types && tsc --noEmit && wrangler deploy --dry-run",
-    "deploy": "npm run config && wrangler deploy --minify",
+    "check": "npm run build:web && npm run config && wrangler types && tsc --noEmit && wrangler deploy --dry-run",
+    "deploy": "npm run build:web && npm run config && wrangler deploy --minify",
     "types": "npm run config && wrangler types"
   },
   "devDependencies": {
