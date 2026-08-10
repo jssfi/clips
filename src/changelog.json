@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.3-8b97e79f",
     "title": "Adaptive HDR tone mapping",
     "changes": [
       "HDR-to-SDR recordings now use the active display's Windows-reported SDR-white and peak-brightness levels instead of fixed values that could severely blow out highlights.",
