@@ -633,6 +633,7 @@ function enterTrimEditor() {
   $("editor").querySelector(".dialog-eyebrow").textContent = "Clip editor";
   $("editor-title").textContent = "Edit recording";
   $("editor-status").textContent = "Drag either edge to choose the part you want to keep.";
+  $("editor-trim-bitrate").value = state.settings.trimBitrate || "original";
   updateEditorPanes();
   updateTimeline();
   syncMpvBounds();
@@ -675,6 +676,10 @@ async function enterVolumeMixer() {
 $("open-editor").onclick = enterVolumeMixer;
 $("choose-trim").onclick = enterTrimEditor;
 $("choose-volume-mix").onclick = enterVolumeMixer;
+$("editor-trim-bitrate").onchange = async () => {
+  $("trim-bitrate").value = $("editor-trim-bitrate").value;
+  render(await window.clips.saveSettings(values()));
+};
 function mixerAdjustments() {
   return [...$("mixer-tracks").querySelectorAll('input[type="range"]')]
     .map(input => ({ index: Number(input.dataset.trackIndex), volume: Number(input.value) / 100 }));
@@ -928,7 +933,7 @@ $("export-trim").onclick = async () => {
   $("editor-status").textContent = "Exporting trimmed clip…";
   try {
     if (!Number.isFinite(trimStart) || !Number.isFinite(trimEnd) || trimEnd <= trimStart) throw new Error("Choose a valid range.");
-    const result = await window.clips.trimRecording(editingPath, trimStart, trimEnd, $("trim-bitrate").value);
+    const result = await window.clips.trimRecording(editingPath, trimStart, trimEnd, $("editor-trim-bitrate").value);
     render(result.state);
     $("editor-status").textContent = `Saved ${result.outputPath.split(/[\\/]/).pop()}`;
     button.textContent = "Done";

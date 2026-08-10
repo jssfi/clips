@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Reliable update restarts",
+    "changes": [
+      "Clips now opens its main window after a user-triggered update restart, even when it originally launched in the background.",
+      "Added an export-quality dropdown directly to the Trim editor and kept it synchronized with Editor settings."
+    ]
+  },
+  {
     "version": "0.3-d34e1507",
     "title": "Focused editor settings",
     "changes": [

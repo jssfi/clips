@@ -306,6 +306,7 @@
           <section id="trim-editor-pane" class="editor-tool-pane" role="tabpanel" aria-labelledby="choose-trim">
             <div class="tool-heading"><strong>Keep this range</strong><span>Drag the handles below the video or enter exact times.</span></div>
             <div class="trim-readout"><label>IN <input id="trim-start-time" value="00:00:00.00" inputmode="decimal" aria-label="Trim start time"></label><label>OUT <input id="trim-end-time" value="00:00:00.00" inputmode="decimal" aria-label="Trim end time"></label></div>
+            <label class="editor-quality" for="editor-trim-bitrate"><span>Export quality</span><select id="editor-trim-bitrate"><option value="original">Original quality</option><option value="6M">6 Mbps</option><option value="12M">12 Mbps</option><option value="18M">18 Mbps</option></select></label>
             <p id="editor-status" class="editor-status" role="status" aria-live="polite">The original recording will stay untouched.</p>
             <div id="export-progress" class="export-progress hidden" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i><span>0%</span></div>
             <div class="editor-actions"><button id="export-trim" class="button primary" type="button">Export trimmed clip</button></div>

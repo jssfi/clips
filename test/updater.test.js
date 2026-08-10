@@ -8,8 +8,14 @@ const {
   cleanupOldVersionDirectories,
   isPreparationDirectory,
   isVersionDirectory,
-  validateMetadata
+  validateMetadata,
+  updateRelaunchArgs
 } = require('../src/updater');
+
+test('update restarts discard background startup without changing other arguments', () => {
+  assert.deepEqual(updateRelaunchArgs(['--hidden', '--trace-warnings']), ['--trace-warnings']);
+  assert.deepEqual(updateRelaunchArgs(['--trace-warnings']), ['--trace-warnings']);
+});
 
 test('old app versions are pruned while active and rollback versions are retained', async t => {
   const versions = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-versions-'));

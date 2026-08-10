@@ -66,6 +66,7 @@ async function main() {
     assert.equal(await updater.restart(), true);
     assert.equal(exitCode, 0);
     assert.equal(relaunchOptions.execPath, preparedExecutable);
+    assert.equal(relaunchOptions.args.includes('--hidden'), false);
     const active = JSON.parse(fs.readFileSync(
       path.join(temporaryRoot, 'jss-clips', 'active-app.json'), 'utf8'
     ));

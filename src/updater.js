@@ -65,6 +65,10 @@ function compareVersions(left, right) {
   return 0;
 }
 
+function updateRelaunchArgs(args = process.argv.slice(1)) {
+  return args.filter(argument => argument !== '--hidden');
+}
+
 function readActiveVersion(app) {
   try {
     const active = JSON.parse(fs.readFileSync(activeVersionPath(app), 'utf8'));
@@ -345,7 +349,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
       activatedAt: new Date().toISOString()
     }, null, 2)}\n`);
     app.isQuitting = true;
-    app.relaunch({ execPath: readyUpdate.executable, args: process.argv.slice(1) });
+    app.relaunch({ execPath: readyUpdate.executable, args: updateRelaunchArgs() });
     app.exit(0);
     return true;
   }
@@ -359,6 +363,7 @@ module.exports = {
   isPreparationDirectory,
   isVersionDirectory,
   validateMetadata,
+  updateRelaunchArgs,
   redirectToActiveVersion,
   createStagedUpdater
 };

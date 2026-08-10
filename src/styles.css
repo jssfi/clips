@@ -965,6 +965,8 @@ body.editor-open .workspace > .page { overflow: hidden; }
 .trim-readout { display: grid; gap: 8px; color: var(--faint); font-size: 9px; letter-spacing: .07em; }
 .trim-readout label { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 7px; }
 .trim-readout input { width: 100%; min-height: 32px; font-family: "SFMono-Regular", Consolas, monospace; }
+.editor-quality { display: grid; gap: 6px; margin-top: 14px; color: var(--faint); font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
+.editor-quality select { width: 100%; min-height: 34px; color: var(--foreground); font-size: 11px; letter-spacing: normal; text-transform: none; }
 .editor-status { min-height: 18px; margin: 11px 0 0; color: var(--muted); font-size: 10px; }
 .export-progress { position: relative; height: 24px; margin-top: 9px; overflow: hidden; border: 1px solid var(--border); border-radius: 5px; background: #060606; }
 .export-progress i { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(88,101,242,.34); transition: width .15s linear; }
