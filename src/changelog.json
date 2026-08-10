@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.3-d34e1507",
     "title": "Focused editor settings",
     "changes": [
       "Removed the unfinished custom CDN upload integration and its credential settings.",
