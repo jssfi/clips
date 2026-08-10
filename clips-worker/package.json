@@ -9,6 +9,7 @@
     "types": "npm run config && wrangler types"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1107.0",
     "typescript": "^5.9.2",
     "wrangler": "^4.114.0"
   }

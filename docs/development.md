@@ -39,6 +39,8 @@ Run `npm run dist:bootstrap` for the installer distributed to new PCs. The boots
 
 `npm run dist:release` builds both the transition NSIS updater and a versioned application package. Packaged builds download, verify, and extract that application package into `%LOCALAPPDATA%\jss-clips\app-versions` in the background. The update button appears only when preparation is complete; clicking it switches the active-version pointer and restarts Clips without running an installer.
 
+Published update metadata is signed with Ed25519. Generate the key pair once with `npm run keys:update`, then move the private key to protected/offline storage and set `CLIPS_UPDATE_SIGNING_KEY` in `.env` to its absolute path. Commit and distribute `src/update-signing-public.pem`; never commit or copy the private key into a build machine except while producing a release. Release builds fail closed when the private key is unavailable, and clients reject missing, modified, or incorrectly signed metadata before downloading an application package.
+
 ## Test capture locally
 
 Run both native capture integration tests:

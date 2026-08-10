@@ -3,6 +3,7 @@ dist/
 *.log
 *.obj
 .clips-dev/
+.clips-private/
 .env
 legacy/update-worker/.wrangler/
 legacy/telemetry-worker/.wrangler/

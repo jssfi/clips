@@ -3,6 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 const { promisify } = require('util');
+const { verifyMetadata } = require('../scripts/update-signature');
+const UPDATE_PUBLIC_KEY = fs.readFileSync(path.join(__dirname, 'update-signing-public.pem'));
 
 const execFileAsync = promisify(execFile);
 const APP_EXECUTABLE = 'jss clips.exe';
@@ -236,6 +238,11 @@ function validateMetadata(value) {
   return { version: value.version, url: value.url, sha512: value.sha512, size };
 }
 
+function authenticateMetadata(value, publicKey = UPDATE_PUBLIC_KEY) {
+  if (!verifyMetadata(value, publicKey)) throw new Error('The update feed signature is invalid.');
+  return validateMetadata(value);
+}
+
 function createStagedUpdater({ app, feedUrl, onState }) {
   let operation = null;
   let readyUpdate = null;
@@ -316,7 +323,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     emit({ status: 'checking', message: '', percent: 0 });
     const response = await fetch(`${feedUrl}/latest.json`, { cache: 'no-store' });
     if (!response.ok) throw new Error(`Update check failed (${response.status}).`);
-    const metadata = validateMetadata(await response.json());
+    const metadata = authenticateMetadata(await response.json());
     if (compareVersions(metadata.version, app.getVersion()) <= 0) {
       readyUpdate = null;
       emit({ status: 'idle', version: app.getVersion(), percent: 0, message: '' });
@@ -363,6 +370,7 @@ module.exports = {
   isPreparationDirectory,
   isVersionDirectory,
   validateMetadata,
+  authenticateMetadata,
   updateRelaunchArgs,
   redirectToActiveVersion,
   createStagedUpdater

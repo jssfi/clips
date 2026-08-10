@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Authenticated application updates",
+    "changes": [
+      "Application updates now require a valid Ed25519 release signature before Clips downloads or runs them.",
+      "Release uploads now use separate bucket-scoped R2 credentials instead of a broad Wrangler login."
+    ]
+  },
+  {
     "version": "0.3-7f8f94dd",
     "title": "Native capture fixes that actually stick",
     "changes": [

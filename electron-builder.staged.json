@@ -6,6 +6,7 @@
   },
   "files": [
     "src/**/*",
+    "scripts/update-signature.js",
     "assets/**/*",
     "package.json"
   ],

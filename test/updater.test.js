@@ -3,12 +3,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
+const { signMetadata } = require('../scripts/update-signature');
 const {
   compareVersions,
   cleanupOldVersionDirectories,
   isPreparationDirectory,
   isVersionDirectory,
   validateMetadata,
+  authenticateMetadata,
   updateRelaunchArgs
 } = require('../src/updater');
 
@@ -98,4 +101,19 @@ test('validateMetadata rejects traversal and mismatched versions', () => {
     sha512: 'checksum',
     size: 123
   }));
+});
+
+test('authenticateMetadata accepts only metadata signed by the trusted key', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+  const metadata = {
+    version: '0.1.12',
+    url: 'jss-clips-app-0.1.12-x64.zip',
+    sha512: 'checksum',
+    size: 123,
+    releaseDate: '2026-08-10T00:00:00.000Z'
+  };
+  metadata.signature = signMetadata(metadata, privateKey);
+  assert.equal(authenticateMetadata(metadata, publicKey).version, '0.1.12');
+  assert.throws(() => authenticateMetadata({ ...metadata, size: 124 }, publicKey), /signature/i);
+  assert.throws(() => authenticateMetadata({ ...metadata, signature: '' }, publicKey), /signature/i);
 });

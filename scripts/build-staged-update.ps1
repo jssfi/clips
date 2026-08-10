@@ -51,4 +51,6 @@ $metadata = [ordered]@{
     releaseDate = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json
 [IO.File]::WriteAllText($metadataPath, "$metadata`n", [Text.UTF8Encoding]::new($false))
+& node (Join-Path $projectRoot 'scripts\sign-update-metadata.js') $metadataPath
+if ($LASTEXITCODE -ne 0) { throw 'Could not sign staged update metadata.' }
 Write-Host "Built staged update $fileName ($($item.Length) bytes)."
