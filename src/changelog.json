@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.3-f89d9b5d",
     "title": "Complete desktop recordings",
     "changes": [
       "Manual desktop recordings now include all system playback audio, so browsers and other non-allow-listed apps can be heard.",
