@@ -618,6 +618,22 @@ kbd {
   font: 11px "SFMono-Regular", Consolas, monospace;
   white-space: nowrap;
 }
+.about-privacy-section .settings-section-title h2 { color: #e4e4e7; }
+.about-privacy-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 10px;
+  padding: 16px;
+  border: 1px solid rgba(102,187,145,.28);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(48,120,83,.14), rgba(255,255,255,.012));
+}
+.about-privacy-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 9px; background: rgba(79,174,124,.14); color: #78d5a2; }
+.about-privacy-icon svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.about-privacy-card strong { color: #e1e1e4; font-size: 13px; font-weight: 590; }
+.about-privacy-card p { margin: 4px 0 0; color: #99999f; font-size: 11px; line-height: 1.5; }
 .changelog {
   max-height: 310px;
   overflow-y: auto;

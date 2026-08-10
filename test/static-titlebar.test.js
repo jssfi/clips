@@ -24,3 +24,11 @@ test('the update Worker routes prerelease restart packages', () => {
   const worker = fs.readFileSync(path.join(__dirname, '..', 'clips-worker', 'src', 'updates.ts'), 'utf8');
   assert.equal(worker.includes('jss-clips-app-\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?-x64\\.zip'), true);
 });
+
+test('the About page presents privacy before app details and release history', () => {
+  const html = source('index.html');
+  const about = html.slice(html.indexOf('id="settings-about"'), html.indexOf('</main>'));
+  assert.ok(about.indexOf('id="about-privacy"') < about.indexOf('<h2>App &amp; updates</h2>'));
+  assert.ok(about.indexOf('id="about-privacy"') < about.indexOf('id="changelog"'));
+  assert.match(about, /Recordings stay on this computer/);
+});

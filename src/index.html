@@ -234,27 +234,31 @@
           </div>
 
           <div id="settings-about" class="settings-group" data-settings-page="about">
-            <div class="settings-heading"><h1>About</h1><p>Version information and application updates.</p></div>
+            <div class="settings-heading"><h1>About Clips</h1><p>Privacy, updates, diagnostics, and release information.</p></div>
+            <section id="about-privacy" class="settings-section about-privacy-section">
+              <div class="settings-section-title"><h2>Privacy &amp; data</h2><p>Your recordings belong to you.</p></div>
+              <div class="about-privacy-card">
+                <div class="about-privacy-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.9 8 7 10 4.1-2 7-5.4 7-10V6zM9 12l2 2 4-5"/></svg></div>
+                <div><strong>Recordings stay on this computer</strong><p>Clips does not upload or share your recordings. Optional telemetry never includes your video or audio.</p></div>
+              </div>
+              <div class="settings-block">
+                <label class="settings-row" for="telemetry-mode"><span><strong>What Clips may send</strong><small id="telemetry-status">Choose what Clips may send.</small></span><select id="telemetry-mode" name="telemetryMode"><option value="diagnostics">Diagnostics and error logs</option><option value="version">Version only</option><option value="off">Nothing</option></select></label>
+              </div>
+            </section>
             <section class="settings-section">
-              <div class="settings-section-title"><h2>Clips</h2></div>
+              <div class="settings-section-title"><h2>App &amp; updates</h2><p>Installed components, release channel, and local diagnostics.</p></div>
               <div class="settings-block">
                 <div class="settings-row"><span><strong>Version</strong><small>The installed application release.</small></span><span id="about-version" class="about-value">—</span></div>
                 <div class="settings-row"><span><strong>Build time</strong><small>When this release package was created.</small></span><span id="about-build-time" class="about-value">—</span></div>
                 <div class="settings-row"><span><strong>Media runtime</strong><small>libobs, FFmpeg, and MPV shared across app updates.</small></span><span id="about-runtime" class="about-value">—</span></div>
                 <label class="settings-row" for="nightly-updates"><span><strong>Nightly updates</strong><small>Receive frequent development builds. These may be less stable.</small></span><input id="nightly-updates" name="nightlyUpdates" type="checkbox" role="switch"></label>
-                <div class="settings-row"><span><strong>Updates</strong><small id="about-update-status" role="status" aria-live="polite">Updates are checked automatically.</small></span><button id="check-updates" class="button outline" type="button">Check for updates</button></div>
-                <div class="settings-row"><span><strong>Diagnostic log</strong><small>Keeps the most recent hour, capped at 5 MB.</small></span><button id="open-logs" class="button outline" type="button">Show log file</button></div>
+                <div class="settings-row"><span><strong>Update status</strong><small id="about-update-status" role="status" aria-live="polite">Updates are checked automatically.</small></span><button id="check-updates" class="button outline" type="button">Check now</button></div>
+                <div class="settings-row"><span><strong>Diagnostic log</strong><small>Stored locally for one hour and capped at 5 MB.</small></span><button id="open-logs" class="button outline" type="button">Show log file</button></div>
               </div>
             </section>
             <section class="settings-section">
-              <div class="settings-section-title"><h2>Changelog</h2><p>Newest releases appear first.</p></div>
+              <div class="settings-section-title"><h2>What&rsquo;s new</h2><p>Newest releases appear first.</p></div>
               <div id="changelog" class="changelog" aria-label="Release history"></div>
-            </section>
-            <section class="settings-section">
-              <div class="settings-section-title"><h2>Privacy</h2><p>Optional anonymous telemetry for official builds.</p></div>
-              <div class="settings-block">
-                <label class="settings-row" for="telemetry-mode"><span><strong>Telemetry</strong><small id="telemetry-status">Choose what Clips may send.</small></span><select id="telemetry-mode" name="telemetryMode"><option value="diagnostics">Diagnostics and error logs</option><option value="version">Version only</option><option value="off">Nothing</option></select></label>
-              </div>
             </section>
           </div>
         </div>
