@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-3b180e56",
     "title": "Clear remove buttons",
     "changes": [
       "Fixed the remove icon in monitored game and audio application lists so it displays as a clear remove symbol instead of garbled text."
