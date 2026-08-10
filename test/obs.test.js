@@ -16,7 +16,7 @@ test('stopSession allows the capture engine time to finalize its outputs', async
   assert.deepEqual(request, ['stop', {}, 60000]);
 });
 
-test('startSession sends the selected microphone to the capture engine', async () => {
+test('startSession sends the selected microphone and desktop audio to the capture engine', async () => {
   const controller = new ObsController();
   controller.applications = [];
 
@@ -34,7 +34,7 @@ test('startSession sends the selected microphone to the capture engine', async (
   assert.equal(request[1].microphoneNvidiaNoiseRemoval, true);
   assert.equal(request[1].applications[0].captureDisplay, true);
   assert.equal(request[1].applications[0].captureVideo, true);
-  assert.equal(request[1].applications[0].captureAudio, false);
+  assert.equal(request[1].applications[0].captureAudio, true);
 });
 
 test('microphone volume is sent to the running capture engine', async () => {

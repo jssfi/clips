@@ -690,15 +690,20 @@ private:
 			if (capture_audio) {
 				const bool grouped = group_extra_applications && audio_application_index >= individual_application_count;
 				const size_t mixer_index = grouped ? application_track_capacity : audio_application_index + 1;
+				const bool desktop_audio = executable == "clips-desktop-capture";
+				const std::string track_name = desktop_audio ? "Desktop audio" : executable;
 				if (!grouped)
-					active_audio_track_names_.push_back(executable);
+					active_audio_track_names_.push_back(track_name);
 				else if (active_audio_track_names_.size() <= mixer_index)
 					active_audio_track_names_.push_back("Other applications");
 				DataRef settings(obs_data_create());
-				obs_data_set_string(settings, "window", window.c_str());
-				obs_data_set_int(settings, "priority", 2);
-				SourceRef source(obs_source_create("wasapi_process_output_capture",
-								  ("Clips Audio - " + executable).c_str(), settings, nullptr));
+				const char *audio_source_id = desktop_audio ? "wasapi_output_capture" : "wasapi_process_output_capture";
+				if (!desktop_audio) {
+					obs_data_set_string(settings, "window", window.c_str());
+					obs_data_set_int(settings, "priority", 2);
+				}
+				SourceRef source(obs_source_create(audio_source_id,
+								  ("Clips Audio - " + track_name).c_str(), settings, nullptr));
 				if (source) {
 					obs_scene_add(scene_, source);
 					obs_source_set_audio_mixers(source, 1u | (1u << mixer_index));

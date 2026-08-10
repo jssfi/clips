@@ -914,7 +914,7 @@ body.editor-open .workspace > .page { overflow: hidden; }
 .video-stage {
   position: relative;
   display: grid;
-  height: clamp(280px, calc(100vh - 330px), 450px);
+  height: clamp(220px, calc(100vh - var(--topbar-height) - 230px), 520px);
   min-height: 0;
   max-height: none;
   place-items: center;
@@ -989,8 +989,6 @@ body.editor-open .workspace > .page { overflow: hidden; }
   top: 15px;
   bottom: 14px;
 }
-.viewer-mode .video-stage { height: clamp(220px, calc(100vh - var(--topbar-height) - 230px), 520px); }
-
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
   outline: 2px solid #7b84ee;
   outline-offset: 2px;

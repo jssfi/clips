@@ -169,7 +169,7 @@ class ObsController {
         bounds: null,
         captureVideo: true,
         captureDisplay: true,
-        captureAudio: false
+        captureAudio: true
       });
     }
     await this.request('start', {

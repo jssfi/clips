@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Complete desktop recordings",
+    "changes": [
+      "Manual desktop recordings now include all system playback audio, so browsers and other non-allow-listed apps can be heard.",
+      "The embedded player now keeps a consistent height when switching into the editor."
+    ]
+  },
+  {
     "version": "0.3-29490581",
     "title": "Persistent window controls",
     "changes": [
