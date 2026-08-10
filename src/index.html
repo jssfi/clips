@@ -228,7 +228,11 @@
             <section class="settings-section">
               <div class="settings-section-title"><h2>Audio routing</h2></div>
               <div class="settings-block">
-                <label class="settings-row settings-row-stack" for="audio-exes"><span><strong>Allowed audio applications</strong><small>One executable per line. Each is saved as an editable track; the active game is always included.</small></span><textarea id="audio-exes" name="audioExecutables" rows="5" autocomplete="off" spellcheck="false" placeholder="Discord.exe&#10;game.exe"></textarea></label>
+                <div class="settings-row settings-row-stack">
+                  <div class="row-heading"><div><strong>Allowed audio applications</strong><small>Each application is saved as an editable track; the active game is always included.</small></div><button id="scan-audio" class="button outline" type="button">Add running application</button></div>
+                  <div id="audio-application-list" class="game-list"></div>
+                  <div id="audio-process-picker" class="process-picker hidden"></div>
+                </div>
               </div>
             </section>
           </div>

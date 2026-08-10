@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Easier application audio selection",
+    "changes": [
+      "Audio routing now lets you choose running applications from a list and remove them individually, matching the monitored-game picker."
+    ]
+  },
+  {
     "version": "0.4-4ce5c2d0",
     "title": "Complete open-source release materials",
     "changes": [

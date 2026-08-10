@@ -126,10 +126,7 @@ const values = () => ({
   microphoneVolumePercent: Number($("microphone-volume").value),
   microphoneNoiseGateDb: Number($("microphone-noise-gate").value),
   microphoneNvidiaNoiseRemoval: $("microphone-nvidia-noise-removal").checked,
-  audioExecutables: $("audio-exes")
-    .value.split(/\r?\n|,/)
-    .map((x) => x.trim())
-    .filter(Boolean),
+  audioExecutables: state.settings.audioExecutables,
   gameExecutables: state.settings.gameExecutables,
   trimBitrate: $("trim-bitrate").value,
   nightlyUpdates: $("nightly-updates").checked,
@@ -197,6 +194,14 @@ function render(s, fill = false) {
         )
         .join("")
     : '<div class="muted">No games added. Add a running game to begin.</div>';
+  $("audio-application-list").innerHTML = s.settings.audioExecutables.length
+    ? s.settings.audioExecutables
+        .map(
+          (x, i) =>
+            `<div class="chip"><span>${escapeHtml(x)}</span><button data-remove-audio="${i}" aria-label="Remove ${escapeHtml(x)}">Ã—</button></div>`,
+        )
+        .join("")
+    : '<div class="muted">No extra applications added. The active game audio is still recorded.</div>';
   const recordings = s.recordings || [];
   const favorites = recordings.filter((item) => item.favorite);
   const replayTotal = recordings.filter((item) => item.kind === "replay").length;
@@ -273,7 +278,6 @@ function render(s, fill = false) {
     $("microphone-nvidia-noise-removal").checked = s.settings.microphoneNvidiaNoiseRemoval !== false;
     updateMicrophoneNoiseGate();
     refreshMicrophones(s.settings.microphoneDeviceId);
-    $("audio-exes").value = s.settings.audioExecutables.join("\n");
     $("trim-bitrate").value = s.settings.trimBitrate || "original";
     $("nightly-updates").checked = !!s.settings.nightlyUpdates;
     $("telemetry-mode").value = ["diagnostics", "version", "off"].includes(s.settings.telemetryMode) ? s.settings.telemetryMode : "off";
@@ -498,6 +502,35 @@ $("process-picker").onclick = async (e) => {
   ) {
     state.settings.gameExecutables.push(b.dataset.exe);
     $("process-picker").classList.add("hidden");
+    render(await window.clips.saveSettings(values()), true);
+  }
+};
+$("audio-application-list").onclick = async (e) => {
+  if (e.target.dataset.removeAudio != null) {
+    state.settings.audioExecutables.splice(Number(e.target.dataset.removeAudio), 1);
+    render(await window.clips.saveSettings(values()), true);
+  }
+};
+$("scan-audio").onclick = async () => {
+  const list = await window.clips.listProcesses();
+  $("audio-process-picker").innerHTML = list
+    .map(
+      (p) =>
+        `<button data-audio-exe="${escapeHtml(p.name)}">${escapeHtml(p.title)} <span class="muted">${escapeHtml(p.path || `${p.name} Â· protected process`)}</span></button>`,
+    )
+    .join("");
+  $("audio-process-picker").classList.remove("hidden");
+};
+$("audio-process-picker").onclick = async (e) => {
+  const b = e.target.closest("[data-audio-exe]");
+  if (
+    b &&
+    !state.settings.audioExecutables.some(
+      (x) => x.toLowerCase() === b.dataset.audioExe.toLowerCase(),
+    )
+  ) {
+    state.settings.audioExecutables.push(b.dataset.audioExe);
+    $("audio-process-picker").classList.add("hidden");
     render(await window.clips.saveSettings(values()), true);
   }
 };
