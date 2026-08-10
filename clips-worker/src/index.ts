@@ -28,7 +28,7 @@ export default {
       return serveTelemetry(withoutPrefix(request, '/telemetry'), env.TELEMETRY);
     }
     if (pathname === '/download') {
-      const metadata = await env.UPDATES.get('latest.yml');
+      const metadata = await env.UPDATES.get('releases/latest.yml');
       const installer = metadata && /^path:\s*([^\r\n]+)$/m.exec(await metadata.text())?.[1]?.trim();
       if (!installer || installer.includes('/') || installer.includes('\\')) {
         return new Response('The Windows download is temporarily unavailable.', { status: 503 });
