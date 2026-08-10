@@ -190,7 +190,7 @@ function render(s, fill = false) {
     ? s.settings.gameExecutables
         .map(
           (x, i) =>
-            `<div class="chip"><span>${escapeHtml(x)}</span><button data-remove="${i}" aria-label="Remove ${escapeHtml(x)}">×</button></div>`,
+            `<div class="chip"><span>${escapeHtml(x)}</span><button data-remove="${i}" aria-label="Remove ${escapeHtml(x)}">&times;</button></div>`,
         )
         .join("")
     : '<div class="muted">No games added. Add a running game to begin.</div>';
@@ -198,7 +198,7 @@ function render(s, fill = false) {
     ? s.settings.audioExecutables
         .map(
           (x, i) =>
-            `<div class="chip"><span>${escapeHtml(x)}</span><button data-remove-audio="${i}" aria-label="Remove ${escapeHtml(x)}">Ã—</button></div>`,
+            `<div class="chip"><span>${escapeHtml(x)}</span><button data-remove-audio="${i}" aria-label="Remove ${escapeHtml(x)}">&times;</button></div>`,
         )
         .join("")
     : '<div class="muted">No extra applications added. The active game audio is still recorded.</div>';
