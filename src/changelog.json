@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.3-7f8f94dd",
     "title": "Native capture fixes that actually stick",
     "changes": [
       "Prevented older Clips executables from overwriting the shared HDR and microphone engine after losing the single-instance lock.",
