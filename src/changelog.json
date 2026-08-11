@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Capture health warnings",
+    "changes": [
+      "Added in-game overlay warnings when recording frames drop, with a quick explanation of whether the GPU or video encoder could not keep up.",
+      "Capture and application errors now appear in the overlay with their reason instead of being visible only in the Clips window."
+    ]
+  },
+  {
     "version": "0.4-3b180e56",
     "title": "Clear remove buttons",
     "changes": [

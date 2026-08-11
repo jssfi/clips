@@ -422,6 +422,16 @@ public:
 
 	bool recording() const { return record_output_ && obs_output_active(record_output_); }
 	bool replay_active() const { return replay_output_ && obs_output_active(replay_output_); }
+	uint64_t rendered_frames() const { return obs_get_total_frames(); }
+	uint64_t lagged_frames() const { return obs_get_lagged_frames(); }
+	uint64_t output_frames() const
+	{
+		return record_output_ ? obs_output_get_total_frames(record_output_) : 0;
+	}
+	uint64_t dropped_frames() const
+	{
+		return record_output_ ? obs_output_get_frames_dropped(record_output_) : 0;
+	}
 
 	std::vector<std::pair<std::string, std::string>> microphones()
 	{
@@ -1000,6 +1010,10 @@ static void send_response(int64_t id, bool ok, const std::string &error, Capture
 	obs_data_set_bool(response, "recording", host.recording());
 	obs_data_set_bool(response, "replayBuffer", host.replay_active());
 	obs_data_set_int(response, "durationMs", static_cast<long long>(host.duration_ms()));
+	obs_data_set_int(response, "renderedFrames", static_cast<long long>(host.rendered_frames()));
+	obs_data_set_int(response, "laggedFrames", static_cast<long long>(host.lagged_frames()));
+	obs_data_set_int(response, "outputFrames", static_cast<long long>(host.output_frames()));
+	obs_data_set_int(response, "droppedFrames", static_cast<long long>(host.dropped_frames()));
 	if (devices) {
 		DataArrayRef items(obs_data_array_create());
 		for (const auto &[device_id, device_name] : *devices) {

@@ -67,6 +67,9 @@ const logger = createLogger({ directory: path.join(app.getPath('userData'), 'log
 const telemetryEndpoint = configuredEndpoint();
 let telemetry = null;
 let systemInformation = null;
+let previousCaptureHealth = null;
+let lastCaptureWarningTime = 0;
+let lastProblemOverlay = { message: '', time: 0 };
 const obs = new ObsController(() => broadcast(), logger);
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 const favoritesPath = () => path.join(app.getPath('userData'), 'favorites.json');
@@ -794,18 +797,19 @@ async function monitor() {
     runningApps = running;
     const wanted = new Set(settings.gameExecutables.map(x => x.toLowerCase()));
     activeGames = running.filter(p => wanted.has(p.name.toLowerCase())).map(p => p.name);
+    const captureStatus = await obs.status();
+    inspectCaptureHealth(captureStatus);
     if (!activeGames.length) {
       autoRecordSuppressed = false;
       lastGameDisplayId = null;
     }
     if (settings.autoRecord && activeGames.length && !autoRecordSuppressed) {
       clearTimeout(stopTimer); stopTimer = null;
-      const status = await obs.status();
-      if (status.recording && sessionDate && sessionDate !== todayKey()) {
+      if (captureStatus.recording && sessionDate && sessionDate !== todayKey()) {
         await obs.stopSession();
         await startSession();
-      } else if (!status.recording) await startSession();
-    } else if (settings.autoRecord && !activeGames.length && !stopTimer && (await obs.status()).recording) {
+      } else if (!captureStatus.recording) await startSession();
+    } else if (settings.autoRecord && !activeGames.length && !stopTimer && captureStatus.recording) {
       stopTimer = setTimeout(async () => {
         stopTimer = null;
         if (!activeGames.length) {
@@ -820,10 +824,42 @@ async function monitor() {
   broadcast();
   scheduleNextMonitor();
 }
+function inspectCaptureHealth(status) {
+  if (!status.recording) { previousCaptureHealth = null; return; }
+  const current = {
+    rendered: Number(status.renderedFrames) || 0,
+    lagged: Number(status.laggedFrames) || 0,
+    output: Number(status.outputFrames) || 0,
+    dropped: Number(status.droppedFrames) || 0
+  };
+  const previous = previousCaptureHealth;
+  previousCaptureHealth = current;
+  if (!previous || current.rendered < previous.rendered || current.output < previous.output) return;
+  const renderingLag = Math.max(0, current.lagged - previous.lagged);
+  const encoderDrops = Math.max(0, current.dropped - previous.dropped);
+  if (!renderingLag && !encoderDrops) return;
+  const now = Date.now();
+  if (now - lastCaptureWarningTime < 60000) return;
+  lastCaptureWarningTime = now;
+  const frames = renderingLag + encoderDrops;
+  const detail = renderingLag && encoderDrops
+    ? 'The GPU and video encoder could not keep up. Try lowering resolution, quality, or FPS.'
+    : renderingLag
+      ? 'The GPU could not render in time. Close GPU-heavy apps or lower resolution/FPS.'
+      : 'The video encoder could not keep up. Try lowering quality, resolution, or FPS.';
+  logger.warn('capture frame drops detected', { renderingLag, encoderDrops });
+  displayOverlayToast({ message: `${frames} recording frame${frames === 1 ? '' : 's'} dropped`, detail, kind: 'warning' });
+}
 function setError(error) {
   lastError = error?.message || String(error);
   logger.error('application error', { message: lastError, stack: error?.stack });
   telemetry?.reportError(error).catch(() => {});
+  const now = Date.now();
+  if (lastProblemOverlay.message !== lastError || now - lastProblemOverlay.time >= 60000) {
+    lastProblemOverlay = { message: lastError, time: now };
+    const detail = lastError.length > 180 ? `${lastError.slice(0, 177)}…` : lastError;
+    displayOverlayToast({ message: 'Clips ran into a problem', detail, kind: 'error' });
+  }
   broadcast();
 }
 async function tryConnect() {
@@ -1035,7 +1071,9 @@ function displayOverlayToast(toast) {
   reinforceOverlayTopmost();
   toastWin.webContents.send('toast:show', toast);
   logger.info('overlay toast shown', { kind: toast.kind, displayId: display?.id, bounds: toastWin.getBounds(), alwaysOnTop: toastWin.isAlwaysOnTop() });
-  const visibleDuration = toast.kind === 'recording' || toast.kind === 'recording-stopped' ? 1350 : 1000;
+  const visibleDuration = toast.kind === 'warning' || toast.kind === 'error'
+    ? 6000
+    : toast.kind === 'recording' || toast.kind === 'recording-stopped' ? 1350 : 1000;
   toastHideTimer = setTimeout(() => {
     if (!toastWin || toastWin.isDestroyed()) return;
     toastWin.webContents.send('toast:hide');

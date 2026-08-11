@@ -45,3 +45,24 @@ test('microphone volume is sent to the running capture engine', async () => {
   await controller.setMicrophoneVolume(125);
   assert.deepEqual(request, ['microphoneVolume', { microphoneVolumePercent: 125 }]);
 });
+
+test('capture status retains frame-drop health counters', async () => {
+  const controller = new ObsController();
+  let status;
+  controller.pending.set(7, {
+    resolve: response => { status = response; },
+    reject: assert.fail,
+    timeout: setTimeout(() => {}, 1000)
+  });
+
+  controller.handleStdout(`${JSON.stringify({
+    id: 7, ok: true, connected: true, recording: true, replayBuffer: true,
+    durationMs: 5000, renderedFrames: 300, laggedFrames: 4, outputFrames: 296, droppedFrames: 2
+  })}\n`);
+
+  assert.equal(status.ok, true);
+  assert.deepEqual(controller.lastStatus, {
+    connected: true, recording: true, replayBuffer: true, durationMs: 5000,
+    renderedFrames: 300, laggedFrames: 4, outputFrames: 296, droppedFrames: 2
+  });
+});

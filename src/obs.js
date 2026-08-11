@@ -12,7 +12,7 @@ class ObsController {
     this.stdoutBuffer = '';
     this.settings = null;
     this.applications = [];
-    this.lastStatus = { connected: false, recording: false, replayBuffer: false, durationMs: 0 };
+    this.lastStatus = { connected: false, recording: false, replayBuffer: false, durationMs: 0, renderedFrames: 0, laggedFrames: 0, outputFrames: 0, droppedFrames: 0 };
   }
 
   request(command, data = {}, timeoutMs = 30000) {
@@ -60,7 +60,11 @@ class ObsController {
         connected: !!response.connected,
         recording: !!response.recording,
         replayBuffer: !!response.replayBuffer,
-        durationMs: Number(response.durationMs) || 0
+        durationMs: Number(response.durationMs) || 0,
+        renderedFrames: Number(response.renderedFrames) || 0,
+        laggedFrames: Number(response.laggedFrames) || 0,
+        outputFrames: Number(response.outputFrames) || 0,
+        droppedFrames: Number(response.droppedFrames) || 0
       };
       if (response.ok) pending.resolve(response);
       else {
@@ -79,7 +83,7 @@ class ObsController {
     this.pending.clear();
     this.child = null;
     this.connected = false;
-    this.lastStatus = { connected: false, recording: false, replayBuffer: false, durationMs: 0 };
+    this.lastStatus = { connected: false, recording: false, replayBuffer: false, durationMs: 0, renderedFrames: 0, laggedFrames: 0, outputFrames: 0, droppedFrames: 0 };
     this.onEvent?.();
   }
 
