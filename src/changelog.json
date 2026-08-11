@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-e3634403",
     "title": "Capture health warnings",
     "changes": [
       "Added in-game overlay warnings when recording frames drop, with a quick explanation of whether the GPU or video encoder could not keep up.",
