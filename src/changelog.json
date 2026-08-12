@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-ef845337",
     "title": "Consistent shortcut controls",
     "changes": [
       "The marker shortcut now uses the same click-and-press capture control as the clip shortcut, and both shortcuts have a dedicated Disable button."
