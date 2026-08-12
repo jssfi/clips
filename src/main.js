@@ -6,6 +6,7 @@ const http = require('http');
 const net = require('net');
 const crypto = require('crypto');
 const { execFile, execFileSync, spawn } = require('child_process');
+const { pipeline } = require('stream');
 const { promisify } = require('util');
 const { ObsController } = require('./obs');
 const buildInfo = require('./build-info.json');
@@ -369,14 +370,27 @@ function startMediaServer() {
           '-f', 'mp4', 'pipe:1'
         ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
         let stderr = '';
+        let disconnected = false;
+        const stopStream = () => {
+          if (disconnected) return;
+          disconnected = true;
+          mediaTokens.delete(token);
+          if (!ffmpeg.killed) ffmpeg.kill();
+        };
         ffmpeg.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-4000); });
         ffmpeg.on('error', error => logger.warn('browser media stream failed to start', { message: error.message }));
         ffmpeg.on('close', code => {
-          if (code && !response.destroyed) logger.warn('browser media stream ended early', { code, message: stderr.trim() });
-          if (!response.writableEnded) response.end();
+          mediaTokens.delete(token);
+          if (code && !disconnected && !response.destroyed) logger.warn('browser media stream ended early', { code, message: stderr.trim() });
         });
-        ffmpeg.stdout.pipe(response);
-        response.on('close', () => { if (!ffmpeg.killed) ffmpeg.kill(); });
+        request.on('aborted', stopStream);
+        response.on('close', stopStream);
+        pipeline(ffmpeg.stdout, response, error => {
+          stopStream();
+          if (error && !['EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code)) {
+            logger.warn('browser media response failed', { code: error.code, message: error.message });
+          }
+        });
         return;
       }
       const target = entry.sourcePath ? entry.filePath : validateRecordingPath(entry.filePath);
@@ -403,9 +417,11 @@ function startMediaServer() {
       response.writeHead(range ? 206 : 200, headers);
       if (request.method === 'HEAD') { response.end(); return; }
       const stream = fs.createReadStream(target, { start, end });
-      stream.on('error', () => response.destroy());
-      response.on('close', () => stream.destroy());
-      stream.pipe(response);
+      pipeline(stream, response, error => {
+        if (error && !['EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code)) {
+          logger.warn('media response failed', { code: error.code, message: error.message });
+        }
+      });
     } catch {
       response.writeHead(404); response.end();
     }

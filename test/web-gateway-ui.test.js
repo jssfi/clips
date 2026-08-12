@@ -31,3 +31,10 @@ test('shared player supports browser video without removing native canvas playba
   assert.match(html, /id="browser-video"/);
   assert.match(renderer, /classList\.toggle\("browser-playback", !!preview\.mediaUrl\)/);
 });
+
+test('browser media disconnects handle normal broken pipes', () => {
+  const main = source('src/main.js');
+  assert.match(main, /pipeline\(ffmpeg\.stdout, response/);
+  assert.match(main, /'EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'/);
+  assert.match(main, /request\.on\('aborted', stopStream\)/);
+});

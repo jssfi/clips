@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Playback closes quietly",
+    "changes": [
+      "Closing a browser video or seeking no longer shows intermittent JavaScript EPIPE error dialogs when the previous media stream disconnects normally."
+    ]
+  },
+  {
     "version": "0.4-8f0c8516",
     "title": "Fast, responsive browser playback",
     "changes": [
