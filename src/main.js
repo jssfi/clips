@@ -18,6 +18,7 @@ const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings'
 const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./telemetry');
 const { parseProcessList } = require('./process-list');
 const { displayVersion } = require('./version');
+const { LibraryMetadata, storageInsights, concatManifest } = require('./library');
 const changelog = require('./changelog.json');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
@@ -41,7 +42,8 @@ const DEFAULTS = {
   recordingsFolder: path.join(os.homedir(), 'Videos', 'Clips'),
   retentionDays: 1, storageCleanupMode: 'disk', maxDiskUsagePercent: 80, maxRawRecordingGigabytes: 250,
   gameExecutables: [], audioExecutables: ['Discord.exe'],
-  autoRecord: true, startWithWindows: true, clipHotkey: 'CommandOrControl+Shift+F10',
+  autoRecord: true, startWithWindows: true, clipHotkey: 'CommandOrControl+Shift+F10', markerHotkey: 'CommandOrControl+Shift+F9',
+  gameProfiles: {},
   pollSeconds: 5, stopDelaySeconds: 20, clipLengthSeconds: 60,
   obsRecordingQuality: 'HQ', obsResolution: '1920x1080', obsFps: 60, obsFormat: 'mkv',
   microphoneDeviceId: 'disabled', microphoneVolumePercent: 100, microphoneNoiseGateDb: -40,
@@ -68,6 +70,9 @@ const telemetryEndpoint = configuredEndpoint();
 let telemetry = null;
 let systemInformation = null;
 let previousCaptureHealth = null;
+let libraryMetadata = null;
+let sessionStartedAt = 0;
+let sessionMarkers = [];
 let lastCaptureWarningTime = 0;
 let lastProblemOverlay = { message: '', time: 0 };
 const obs = new ObsController(() => broadcast(), logger);
@@ -91,6 +96,10 @@ function persistFavorites() {
   fs.renameSync(temporary, target);
 }
 function isFavoriteRecording(filePath) { return favoriteRecordingKeys.has(recordingKey(filePath)); }
+function enrichRecording(recording) {
+  const metadata = libraryMetadata?.get(recording.path) || {};
+  return { ...recording, ...metadata, title: metadata.title || recording.name, tags: metadata.tags || [], markers: metadata.markers || [], game: metadata.game || '' };
+}
 function captureRuntimeRoot() {
   return app.isPackaged ? persistentRuntimeRoot : path.join(__dirname, '..', 'vendor');
 }
@@ -190,9 +199,15 @@ function todayFolder() {
 }
 function todayKey() { return new Date().toLocaleDateString('sv-SE'); }
 async function startSession() {
-  if (!await tryConnect()) throw new Error(lastError || 'The Clips capture engine could not start.');
+  const profile = settings.gameProfiles?.[activeGames[0]?.toLowerCase()] || {};
+  const captureSettings = { ...settings,
+    obsRecordingQuality: profile.quality || settings.obsRecordingQuality,
+    obsResolution: profile.resolution || settings.obsResolution,
+    obsFps: profile.fps || settings.obsFps,
+    clipLengthSeconds: profile.clipLengthSeconds || settings.clipLengthSeconds };
+  if (!await tryConnect(captureSettings)) throw new Error(lastError || 'The Clips capture engine could not start.');
   cleanupStorage();
-  const wantedAudio = new Set([...settings.audioExecutables, ...activeGames].map(name => name.toLowerCase()));
+  const wantedAudio = new Set([...(profile.audioExecutables || settings.audioExecutables), ...activeGames].map(name => name.toLowerCase()));
   const outputDirectory = todayFolder();
   const audioApplications = runningApps.filter(app => wantedAudio.has(app.name.toLowerCase()));
   logger.info('starting capture session', {
@@ -205,12 +220,14 @@ async function startSession() {
   await obs.startSession(
     outputDirectory,
     activeGames,
-    settings.microphoneDeviceId,
+    profile.microphoneDeviceId || settings.microphoneDeviceId,
     settings.microphoneVolumePercent,
     settings.microphoneNoiseGateDb,
     settings.microphoneNvidiaNoiseRemoval
   );
   sessionDate = todayKey();
+  sessionStartedAt = Date.now();
+  sessionMarkers = [];
   showOverlayToast('Recording started', 'recording');
 }
 function isRawRecordingName(name) {
@@ -276,7 +293,7 @@ function recentRecordings() {
   if (!fs.existsSync(root)) return [];
   return fs.readdirSync(root, { withFileTypes: true })
     .filter(item => item.isFile() && /\.(mkv|mp4|mov|webm|flv)$/i.test(item.name))
-    .map(item => { const fullPath = path.join(root, item.name); const stat = fs.statSync(fullPath); return { name: item.name, path: fullPath, bytes: stat.size, modified: stat.mtime.toISOString(), kind: /^Replay(?:[ _-]|$)/i.test(item.name) ? 'replay' : 'recording', favorite: isFavoriteRecording(fullPath) }; })
+    .map(item => { const fullPath = path.join(root, item.name); const stat = fs.statSync(fullPath); return enrichRecording({ name: item.name, path: fullPath, bytes: stat.size, modified: stat.mtime.toISOString(), kind: /^Replay(?:[ _-]|$)/i.test(item.name) ? 'replay' : 'recording', favorite: isFavoriteRecording(fullPath) }); })
     .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.modified.localeCompare(a.modified)).slice(0, 24);
 }
 function archivedRecordings() {
@@ -291,10 +308,10 @@ function archivedRecordings() {
       if (!item.isFile() || !/\.(mkv|mp4|mov|webm|flv)$/i.test(item.name)) continue;
       const fullPath = path.join(dayFolder, item.name);
       const stat = fs.statSync(fullPath);
-      recordings.push({
+      recordings.push(enrichRecording({
         name: item.name, path: fullPath, bytes: stat.size, modified: stat.mtime.toISOString(),
         day: day.name, kind: /^Replay(?:[ _-]|$)/i.test(item.name) ? 'replay' : 'recording', favorite: isFavoriteRecording(fullPath)
-      });
+      }));
     }
   }
   return recordings.sort((a, b) => b.day.localeCompare(a.day) || b.modified.localeCompare(a.modified));
@@ -862,7 +879,7 @@ function setError(error) {
   }
   broadcast();
 }
-async function tryConnect() {
+async function tryConnect(captureSettings = settings) {
   if (obs.connected) return true;
   if (connectPromise) return connectPromise;
   connectPromise = (async () => {
@@ -874,7 +891,7 @@ async function tryConnect() {
         executable,
         runtimeRoot: captureRuntimeRoot(),
         configRoot: path.join(app.getPath('userData'), 'capture-host'),
-        settings
+        settings: captureSettings
       });
       lastError = '';
       return true;
@@ -887,7 +904,12 @@ async function tryConnect() {
   })();
   return connectPromise;
 }
-async function state() { return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings: recentRecordings(), archivedRecordings: archivedRecordings(), lastError, lastClip, captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: displayVersion(app.getVersion()), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()), changelog }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState }; }
+async function state() {
+  const recordings = recentRecordings(); const archived = archivedRecordings();
+  return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings, archivedRecordings: archived,
+    sessionMarkers, storage: storageInsights(settings.recordingsFolder, [...recordings, ...archived]), lastError, lastClip,
+    captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: displayVersion(app.getVersion()), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()), changelog }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState };
+}
 
 async function collectSystemInformation() {
   let gpu = 'Unknown';
@@ -1022,7 +1044,16 @@ function scheduleMonitor() {
   monitorTimer = null;
   monitor();
 }
-function registerHotkey() { globalShortcut.unregisterAll(); if (settings.clipHotkey) globalShortcut.register(settings.clipHotkey, () => saveClip()); }
+function addTimelineMarker() {
+  if (!sessionStartedAt || !obs.lastStatus.recording) return;
+  sessionMarkers.push({ id: crypto.randomUUID(), time: Math.max(0, (Date.now() - sessionStartedAt) / 1000), label: '' });
+  showOverlayToast(`Marker ${sessionMarkers.length} added`, 'clip-saved'); broadcast();
+}
+function registerHotkey() {
+  globalShortcut.unregisterAll();
+  if (settings.clipHotkey) globalShortcut.register(settings.clipHotkey, () => saveClip());
+  if (settings.markerHotkey && settings.markerHotkey !== settings.clipHotkey) globalShortcut.register(settings.markerHotkey, addTimelineMarker);
+}
 async function saveClip() { try { await obs.saveClip(); lastClip = new Date().toISOString(); lastError = ''; showOverlayToast('Clip saved', 'clip-saved'); } catch (e) { setError(e); } broadcast(); }
 
 let lastGameDisplayId = null;
@@ -1160,6 +1191,7 @@ app.whenReady().then(async () => {
   systemInformation = await collectSystemInformation();
   logger.info('system information', systemInformation);
   settings = loadSettings();
+  libraryMetadata = new LibraryMetadata(path.join(app.getPath('userData'), 'library.json'), settings.recordingsFolder);
   loadFavorites();
   persist();
   logger.info('application ready', {
@@ -1310,6 +1342,11 @@ ipcMain.handle('recording:toggle', async () => {
     if (output.recording) {
       autoRecordSuppressed = activeGames.length > 0;
       await obs.stopSession();
+      if (sessionMarkers.length) {
+        const candidates = recentRecordings().filter(item => item.kind === 'recording').sort((a, b) => b.modified.localeCompare(a.modified));
+        if (candidates[0]) libraryMetadata.update(candidates[0].path, { markers: sessionMarkers, game: activeGames[0] || '' });
+      }
+      sessionMarkers = []; sessionStartedAt = 0;
       sessionDate = '';
       await obs.disconnect();
       showOverlayToast('Recording stopped', 'recording-stopped');
@@ -1338,6 +1375,24 @@ ipcMain.handle('recording:favorite', async (_event, filePath, favorite) => {
   await broadcast();
   return state();
 });
+ipcMain.handle('recording:metadata', async (_event, filePath, change) => {
+  const target = validateRecordingPath(filePath);
+  libraryMetadata.update(target, change || {});
+  await broadcast(); return state();
+});
+ipcMain.handle('recording:stitch', async (_event, filePaths) => {
+  const targets = [...new Set((filePaths || []).map(validateRecordingPath))];
+  if (targets.length < 2) throw new Error('Select at least two clips to stitch.');
+  const manifest = path.join(app.getPath('temp'), `clips-stitch-${crypto.randomUUID()}.txt`);
+  const extension = path.extname(targets[0]);
+  const outputPath = path.join(todayFolder(), `Compilation-${Date.now()}${extension}`);
+  fs.writeFileSync(manifest, concatManifest(targets));
+  try { await execFileAsync(ffmpegPath(), ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', manifest, '-map', '0', '-c', 'copy', outputPath], { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }); }
+  catch (error) { throw new Error(error.stderr?.trim() || 'FFmpeg could not stitch these clips. Clips must use compatible formats.'); }
+  finally { fs.rmSync(manifest, { force: true }); }
+  libraryMetadata.update(outputPath, { title: 'Compilation', tags: ['compilation'] });
+  await broadcast(); return { outputPath, state: await state() };
+});
 ipcMain.handle('recording:delete', async (_event, filePaths) => {
   const targets = [...new Set((Array.isArray(filePaths) ? filePaths : [filePaths]).map(validateRecordingPath))];
   const captureStatus = await obs.status();
@@ -1345,6 +1400,7 @@ ipcMain.handle('recording:delete', async (_event, filePaths) => {
     throw new Error('Stop the active recording before deleting today\'s full recording.');
   }
   for (const target of targets) {
+    libraryMetadata.remove(target);
     fs.rmSync(target, { force: true });
     favoriteRecordingKeys.delete(recordingKey(target));
     thumbnailPromises.delete(target);

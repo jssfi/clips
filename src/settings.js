@@ -3,6 +3,14 @@ const path = require('path');
 function normalizeSettingsUpdate(current, next) {
   const requestedFolder = String(next.recordingsFolder || '').trim();
   if (!requestedFolder) throw new Error('Choose a storage folder.');
+  const gameProfiles = Object.fromEntries(Object.entries(next.gameProfiles || {}).map(([executable, profile]) => [String(executable).toLowerCase(), {
+    quality: ['HQ', 'Small', 'Lossless', 'Stream'].includes(profile?.quality) ? profile.quality : '',
+    resolution: ['2560x1440', '1920x1080', '1280x720'].includes(profile?.resolution) ? profile.resolution : '',
+    fps: [30, 60].includes(Number(profile?.fps)) ? Number(profile.fps) : 0,
+    clipLengthSeconds: profile?.clipLengthSeconds ? Math.max(5, Math.min(3600, Number(profile.clipLengthSeconds))) : 0,
+    microphoneDeviceId: String(profile?.microphoneDeviceId || ''),
+    audioExecutables: Array.isArray(profile?.audioExecutables) ? profile.audioExecutables.map(String) : undefined
+  }]));
   return {
     ...current,
     ...next,
@@ -18,6 +26,8 @@ function normalizeSettingsUpdate(current, next) {
     microphoneNvidiaNoiseRemoval: next.microphoneNvidiaNoiseRemoval !== false,
     microphoneNoiseSuppression: undefined,
     audioExecutables: Array.isArray(next.audioExecutables) ? next.audioExecutables : [],
+    markerHotkey: String(next.markerHotkey || current.markerHotkey || ''),
+    gameProfiles,
     nightlyUpdates: !!next.nightlyUpdates,
     telemetryMode: ['diagnostics', 'version', 'off'].includes(next.telemetryMode)
       ? next.telemetryMode

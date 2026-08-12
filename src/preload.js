@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('clips', {
   getRecordingThumbnail: (filePath) => ipcRenderer.invoke('recording:thumbnail', filePath),
   setRecordingFavorite: (filePath, favorite) => ipcRenderer.invoke('recording:favorite', filePath, favorite),
   deleteRecordings: (filePaths) => ipcRenderer.invoke('recording:delete', filePaths),
+  updateRecordingMetadata: (filePath, change) => ipcRenderer.invoke('recording:metadata', filePath, change),
+  stitchRecordings: (filePaths) => ipcRenderer.invoke('recording:stitch', filePaths),
   startMpv: (filePath, bounds) => ipcRenderer.invoke('mpv:start', filePath, bounds),
   setMpvBounds: (bounds) => ipcRenderer.invoke('mpv:bounds', bounds),
   mpvStatus: () => ipcRenderer.invoke('mpv:status'),
