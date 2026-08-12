@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-fa38ca3c",
     "title": "Quieter warnings and one browser tab",
     "changes": [
       "Frame-drop overlays now appear only for meaningful bursts or sustained loss, while small isolated misses remain available in diagnostics.",
