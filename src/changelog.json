@@ -1,6 +1,6 @@
 [
   {
-    "version": "0.4-4c053281",
+    "version": "next",
     "title": "Use Clips from the web",
     "changes": [
       "An experimental Desktop window switch can now hand the interface over to clips.jss.fi/app while the installed app keeps recording, handling shortcuts, and showing overlays in the background.",

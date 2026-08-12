@@ -116,7 +116,12 @@
     events.addEventListener('trim-progress', event => callbacks.trim.forEach(callback => callback(JSON.parse(event.data))));
     events.addEventListener('audio-mix-progress', event => callbacks.mix.forEach(callback => callback(JSON.parse(event.data))));
     events.addEventListener('open', () => setConnected(true));
-    events.addEventListener('error', () => updateBanner('Reconnecting to the background app…'));
+    events.addEventListener('error', () => {
+      events?.close();
+      events = null;
+      setConnected(false);
+      updateBanner('the connection ended; reconnect after Clips is running again.');
+    });
   }
   async function activateGateway() {
     const state = await rpc('getState');
