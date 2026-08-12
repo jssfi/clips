@@ -71,6 +71,10 @@
   let events = null;
   let banner = null;
   let currentState = demoState;
+  let browserMediaDuration = 0;
+  let browserMediaOffset = 0;
+  let browserMediaPath = '';
+  let browserSeekTimer = null;
 
   try {
     if (!gatewayToken) {
@@ -208,7 +212,11 @@
   };
   async function startBrowserPlayback(filePath) {
     if (!gatewayConnected) return desktopOnly('Video playback');
-    const mediaUrl = await rpc('getRecordingMedia', [filePath]);
+    browserMediaPath = filePath;
+    browserMediaOffset = 0;
+    const media = await rpc('getRecordingMedia', [filePath, 0]);
+    const mediaUrl = typeof media === 'string' ? media : media.url;
+    browserMediaDuration = Number(media.duration) || 0;
     const video = document.getElementById('browser-video');
     video.crossOrigin = 'anonymous';
     video.src = mediaUrl;
@@ -218,7 +226,23 @@
       video.addEventListener('loadedmetadata', resolve, { once: true });
       video.addEventListener('error', () => reject(new Error('The browser could not play this recording.')), { once: true });
     });
-    return { duration: video.duration || 0, mediaUrl };
+    return { duration: browserMediaDuration || video.duration || 0, mediaUrl };
+  }
+  async function seekBrowserPlayback(seconds) {
+    const video = browserVideo();
+    if (!video || !browserMediaPath) return false;
+    browserMediaOffset = Math.max(0, Math.min(browserMediaDuration, Number(seconds) || 0));
+    clearTimeout(browserSeekTimer);
+    browserSeekTimer = setTimeout(async () => {
+      const wasPaused = video.paused;
+      try {
+        const media = await rpc('getRecordingMedia', [browserMediaPath, browserMediaOffset]);
+        video.src = typeof media === 'string' ? media : media.url;
+        video.load();
+        if (!wasPaused) await video.play();
+      } catch {}
+    }, 120);
+    return true;
   }
   const browserVideo = () => document.getElementById('browser-video');
 
@@ -242,13 +266,13 @@
     deleteRecordings: use('deleteRecordings', async filePaths => { demoState.recordings = demoState.recordings.filter(item => !filePaths.includes(item.path)); demoState.archivedRecordings = demoState.archivedRecordings.filter(item => !filePaths.includes(item.path)); demoEmit(); return clone(demoState); }),
     startMpv: startBrowserPlayback,
     setMpvBounds: async () => true,
-    mpvStatus: async () => ({ running: !!browserVideo()?.src, duration: browserVideo()?.duration || 0, currentTime: browserVideo()?.currentTime || 0, paused: browserVideo()?.paused ?? true }),
-    seekMpv: async seconds => { if (browserVideo()) browserVideo().currentTime = Number(seconds) || 0; return true; },
+    mpvStatus: async () => ({ running: !!browserVideo()?.src, duration: browserMediaDuration || browserVideo()?.duration || 0, currentTime: browserMediaOffset + (browserVideo()?.currentTime || 0), paused: browserVideo()?.paused ?? true }),
+    seekMpv: seekBrowserPlayback,
     toggleMpv: async () => { const video = browserVideo(); if (!video) return false; if (video.paused) await video.play(); else video.pause(); return true; },
     pauseMpv: async paused => { const video = browserVideo(); if (!video) return false; if (paused) video.pause(); else await video.play(); return true; },
     setMpvVolume: async volume => { if (browserVideo()) browserVideo().volume = Math.max(0, Math.min(1, Number(volume) / 100)); return true; },
     setMpvAudioMix: async () => true,
-    closeMpv: async () => { const video = browserVideo(); if (video) { video.pause(); video.removeAttribute('src'); video.load(); } return true; },
+    closeMpv: async () => { clearTimeout(browserSeekTimer); browserMediaPath = ''; browserMediaOffset = 0; browserMediaDuration = 0; const video = browserVideo(); if (video) { video.pause(); video.removeAttribute('src'); video.load(); } return true; },
     openMpvFullscreen: async () => { await browserVideo()?.requestFullscreen(); return true; },
     listMicrophones: use('listMicrophones', async () => []),
     microphoneLevel: use('microphoneLevel', async () => -60),

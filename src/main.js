@@ -351,6 +351,34 @@ function startMediaServer() {
       const token = new URL(request.url, 'http://127.0.0.1').pathname.split('/').pop();
       const entry = mediaTokens.get(token);
       if (!entry) { response.writeHead(404); response.end(); return; }
+      if (entry.stream) {
+        response.writeHead(200, {
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+          'Content-Type': 'video/mp4',
+          'Cross-Origin-Resource-Policy': 'cross-origin'
+        });
+        if (request.method === 'HEAD') { response.end(); return; }
+        const ffmpeg = spawn(ffmpegPath(), [
+          '-hide_banner', '-loglevel', 'error', '-readrate', '1.25',
+          ...(entry.startSeconds > 0 ? ['-ss', String(entry.startSeconds)] : []),
+          '-i', entry.filePath,
+          '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy',
+          '-avoid_negative_ts', 'make_zero',
+          '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+          '-f', 'mp4', 'pipe:1'
+        ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        let stderr = '';
+        ffmpeg.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-4000); });
+        ffmpeg.on('error', error => logger.warn('browser media stream failed to start', { message: error.message }));
+        ffmpeg.on('close', code => {
+          if (code && !response.destroyed) logger.warn('browser media stream ended early', { code, message: stderr.trim() });
+          if (!response.writableEnded) response.end();
+        });
+        ffmpeg.stdout.pipe(response);
+        response.on('close', () => { if (!ffmpeg.killed) ffmpeg.kill(); });
+        return;
+      }
       const target = entry.sourcePath ? entry.filePath : validateRecordingPath(entry.filePath);
       const size = fs.statSync(target).size;
       const range = request.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
@@ -424,6 +452,20 @@ async function previewPath(filePath) {
     throw new Error(error.stderr?.trim() || 'Could not create a playable preview.');
   }
 }
+function cleanIncompletePreviewCache() {
+  const cacheFolder = path.join(app.getPath('userData'), 'preview-cache');
+  if (!fs.existsSync(cacheFolder)) return;
+  let bytes = 0;
+  let files = 0;
+  for (const entry of fs.readdirSync(cacheFolder, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.working.mp4')) continue;
+    const target = path.join(cacheFolder, entry.name);
+    bytes += fs.statSync(target).size;
+    fs.rmSync(target, { force: true });
+    files += 1;
+  }
+  if (files) logger.info('removed incomplete browser previews', { files, bytes });
+}
 async function recordingThumbnail(filePath) {
   const sourcePath = validateRecordingPath(filePath);
   const stat = fs.statSync(sourcePath);
@@ -440,18 +482,18 @@ async function recordingThumbnail(filePath) {
     if (!fs.existsSync(executable)) return '';
     const temporaryPath = `${outputPath}.working.jpg`;
     try {
-      const renderThumbnail = filters => execFileAsync(executable, [
-        '-hide_banner', '-loglevel', 'error', '-y', '-i', sourcePath,
+      const renderThumbnail = (filters, seek = true) => execFileAsync(executable, [
+        '-hide_banner', '-loglevel', 'error', '-y', ...(seek ? ['-ss', '1'] : []), '-i', sourcePath,
         '-frames:v', '1', '-vf', filters,
         '-q:v', '3', '-strict', 'unofficial', temporaryPath
       ], { windowsHide: true, maxBuffer: 5 * 1024 * 1024 });
       const scale = 'scale=640:360:force_original_aspect_ratio=increase,crop=640:360';
       try {
-        await renderThumbnail(`signalstats,metadata=select:key=lavfi.signalstats.YAVG:value=18:function=greater,${scale}`);
+        await renderThumbnail(scale);
         if (!fs.existsSync(temporaryPath) || !fs.statSync(temporaryPath).size) throw new Error('No visible frame found.');
       } catch {
         fs.rmSync(temporaryPath, { force: true });
-        await renderThumbnail(scale);
+        await renderThumbnail(scale, false);
       }
       fs.renameSync(temporaryPath, outputPath);
       return readThumbnail();
@@ -468,14 +510,29 @@ async function recordingThumbnail(filePath) {
     thumbnailPromises.delete(sourcePath);
   }
 }
-async function recordingMediaUrl(filePath) {
+async function recordingMediaUrl(filePath, requestedStartSeconds = 0) {
   const target = validateRecordingPath(filePath);
-  const playablePath = await previewPath(target);
+  const startSeconds = Math.max(0, Number(requestedStartSeconds) || 0);
+  const executable = ffmpegPath();
+  if (!fs.existsSync(executable)) throw new Error('FFmpeg is missing from this Clips build.');
+  let duration = 0;
+  let probeStderr = '';
+  try {
+    ({ stderr: probeStderr = '' } = await execFileAsync(executable, ['-hide_banner', '-i', target, '-t', '0', '-f', 'null', '-'], {
+      windowsHide: true,
+      maxBuffer: 2 * 1024 * 1024
+    }));
+  } catch (error) {
+    probeStderr = String(error.stderr || '');
+  }
+  const match = probeStderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  if (match) duration = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  if (!duration) throw new Error('Could not read the recording duration.');
   const cutoff = Date.now() - 60 * 60 * 1000;
   for (const [token, entry] of mediaTokens) if (entry.createdAt < cutoff) mediaTokens.delete(token);
   const token = crypto.randomUUID();
-  mediaTokens.set(token, { filePath: playablePath, sourcePath: target, createdAt: Date.now() });
-  return `http://127.0.0.1:${mediaPort}/media/${token}`;
+  mediaTokens.set(token, { filePath: target, startSeconds, stream: true, createdAt: Date.now() });
+  return { url: `http://127.0.0.1:${mediaPort}/media/${token}`, duration, startSeconds };
 }
 function closeMpvSession() {
   const child = mpvProcess;
@@ -1482,7 +1539,7 @@ async function gatewayInvoke(method, args) {
     updateRecordingMetadata: () => updateRecordingMetadata(args[0], args[1]),
     stitchRecordings: () => stitchRecordings(args[0]),
     deleteRecordings: () => deleteRecordings(args[0]),
-    getRecordingMedia: () => recordingMediaUrl(args[0]),
+    getRecordingMedia: () => recordingMediaUrl(args[0], args[1]),
     listMicrophones,
     microphoneLevel: () => obs.microphoneLevel(),
     trimRecording: () => trimRecordingAction(args[0], args[1], args[2], args[3]),
@@ -1498,6 +1555,7 @@ async function gatewayInvoke(method, args) {
 
 app.whenReady().then(async () => {
   if (!gotSingleInstanceLock) return;
+  cleanIncompletePreviewCache();
   systemInformation = await collectSystemInformation();
   logger.info('system information', systemInformation);
   settings = loadSettings();

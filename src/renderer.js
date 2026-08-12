@@ -28,7 +28,7 @@ const thumbnailObserver = new IntersectionObserver((entries) => {
     thumbnailObserver.unobserve(entry.target);
     requestRecordingThumbnail(entry.target);
   });
-}, { rootMargin: "180px" });
+}, { rootMargin: "40px" });
 const $ = (id) => document.getElementById(id);
 const formatTimestamp = (totalSeconds) => {
   const safe = Math.max(0, Number(totalSeconds) || 0);

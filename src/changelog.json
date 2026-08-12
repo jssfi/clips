@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Fast, responsive browser playback",
+    "changes": [
+      "Opening a recording in the browser now starts a paced stream instead of copying the entire file first, keeping recording controls, update checks, disk usage, and the rest of the computer responsive even with very large sessions.",
+      "Browser playback can seek without building multi-gigabyte preview files, while media preparation and thumbnail work no longer monopolize the app."
+    ]
+  },
+  {
     "version": "0.4-9db435a2",
     "title": "Browser controls stay connected",
     "changes": [
