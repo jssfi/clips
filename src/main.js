@@ -75,6 +75,7 @@ let telemetry = null;
 let systemInformation = null;
 let previousCaptureHealth = null;
 let libraryMetadata = null;
+let microphoneListPromise = null;
 const gatewayToken = crypto.randomBytes(32).toString('base64url');
 let gateway = null;
 let gatewayReady = false;
@@ -467,20 +468,6 @@ async function previewPath(filePath) {
     fs.rmSync(temporaryPath, { force: true });
     throw new Error(error.stderr?.trim() || 'Could not create a playable preview.');
   }
-}
-function cleanIncompletePreviewCache() {
-  const cacheFolder = path.join(app.getPath('userData'), 'preview-cache');
-  if (!fs.existsSync(cacheFolder)) return;
-  let bytes = 0;
-  let files = 0;
-  for (const entry of fs.readdirSync(cacheFolder, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith('.working.mp4')) continue;
-    const target = path.join(cacheFolder, entry.name);
-    bytes += fs.statSync(target).size;
-    fs.rmSync(target, { force: true });
-    files += 1;
-  }
-  if (files) logger.info('removed incomplete browser previews', { files, bytes });
 }
 async function recordingThumbnail(filePath) {
   const sourcePath = validateRecordingPath(filePath);
@@ -1504,12 +1491,17 @@ async function deleteRecordings(filePaths) {
 }
 
 async function listMicrophones() {
-  const wasConnected = obs.connected;
-  if (!wasConnected && !await tryConnect()) return [];
-  try { return await obs.microphones(); }
-  finally {
-    if (!wasConnected && !obs.lastStatus.recording) await obs.disconnect().catch(() => {});
-  }
+  if (microphoneListPromise) return microphoneListPromise;
+  microphoneListPromise = (async () => {
+    const wasConnected = obs.connected;
+    if (!wasConnected && !await tryConnect()) return [];
+    try { return await obs.microphones(); }
+    finally {
+      if (!wasConnected && !obs.lastStatus.recording) await obs.disconnect().catch(() => {});
+    }
+  })();
+  try { return await microphoneListPromise; }
+  finally { microphoneListPromise = null; }
 }
 
 async function trimRecordingAction(filePath, startSeconds, endSeconds, bitrate) {
@@ -1571,7 +1563,6 @@ async function gatewayInvoke(method, args) {
 
 app.whenReady().then(async () => {
   if (!gotSingleInstanceLock) return;
-  cleanIncompletePreviewCache();
   systemInformation = await collectSystemInformation();
   logger.info('system information', systemInformation);
   settings = loadSettings();

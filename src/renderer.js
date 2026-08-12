@@ -14,6 +14,7 @@ let mixerLoadedPath = "";
 let liveMixTimer = null;
 let libraryQuery = "";
 let librarySort = "newest";
+let renderedSettingsJson = "";
 const playerIcons = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
@@ -290,6 +291,7 @@ function render(s, fill = false) {
     : "Monitoring in background";
   $("clip-key").textContent = formatAccelerator(s.settings.clipHotkey, " ");
   if (fill) {
+    renderedSettingsJson = JSON.stringify(s.settings);
     $("folder").value = s.settings.recordingsFolder;
     $("days").value = s.settings.retentionDays;
     $("cleanup-mode").value = s.settings.storageCleanupMode;
@@ -312,7 +314,6 @@ function render(s, fill = false) {
     $("microphone-noise-gate").value = s.settings.microphoneNoiseGateDb ?? -40;
     $("microphone-nvidia-noise-removal").checked = s.settings.microphoneNvidiaNoiseRemoval !== false;
     updateMicrophoneNoiseGate();
-    refreshMicrophones(s.settings.microphoneDeviceId);
     $("trim-bitrate").value = s.settings.trimBitrate || "original";
     $("desktop-window").checked = s.settings.desktopWindow !== false;
     $("nightly-updates").checked = !!s.settings.nightlyUpdates;
@@ -1249,7 +1250,9 @@ const archiveDays = $("archive-days");
 archiveDays.addEventListener("click", openRecording);
 $("recent-favorite-list").onclick = openRecording;
 $("archive-favorite-list").onclick = openRecording;
-window.clips.onState((s) => render(s, !document.activeElement?.closest?.("#settings")));
+window.clips.onState((s) => render(s,
+  JSON.stringify(s.settings) !== renderedSettingsJson && !document.activeElement?.closest?.("#settings")
+));
 window.clips.getState().then((s) => render(s, true));
 // Main-process state events keep the UI current. Only recover state after a
 // suspended/hidden renderer becomes visible instead of polling while in tray.

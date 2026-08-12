@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Startup disk activity fixed",
+    "changes": [
+      "Clips no longer repeatedly initializes and shuts down the capture engine to refresh microphone settings after every live browser update, eliminating the severe disk activity and startup instability introduced in the previous nightly.",
+      "Automatic deletion of incomplete browser preview caches has been removed from startup; cache cleanup will not block or overload the app."
+    ]
+  },
+  {
     "version": "0.4-d1c2012e",
     "title": "Playback closes quietly",
     "changes": [

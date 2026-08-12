@@ -38,3 +38,10 @@ test('browser media disconnects handle normal broken pipes', () => {
   assert.match(main, /'EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'/);
   assert.match(main, /request\.on\('aborted', stopStream\)/);
 });
+
+test('live settings synchronization does not rediscover microphones on every render', () => {
+  const renderer = source('src/renderer.js');
+  const renderBody = renderer.slice(renderer.indexOf('function render(s, fill = false)'), renderer.indexOf('function renderChangelog'));
+  assert.doesNotMatch(renderBody, /refreshMicrophones/);
+  assert.match(renderer, /JSON\.stringify\(s\.settings\) !== renderedSettingsJson/);
+});
