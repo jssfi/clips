@@ -16,7 +16,7 @@ test('library metadata normalizes titles, tags, and timeline markers', () => {
 
 test('storage insights group bytes by game', () => {
   const result = storageInsights('Z:\\missing', [{ bytes: 20, game: 'Game A' }, { bytes: 10, game: 'Game A' }, { bytes: 5 }]);
-  assert.equal(result.totalBytes, 35); assert.deepEqual(result.byGame, [{ game: 'Game A', bytes: 30 }, { game: 'Uncategorized', bytes: 5 }]);
+  assert.equal(result.totalBytes, 35); assert.deepEqual(result.byGame, [{ game: 'Game A', bytes: 30 }, { game: 'Older recordings (game unknown)', bytes: 5 }]);
 });
 
 test('concat manifest preserves clip order', () => {

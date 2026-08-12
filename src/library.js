@@ -48,7 +48,7 @@ function storageInsights(recordingsFolder, recordings) {
   let totalBytes = 0;
   for (const recording of recordings) {
     totalBytes += Number(recording.bytes) || 0;
-    const game = recording.game || 'Uncategorized';
+    const game = recording.game || 'Older recordings (game unknown)';
     groups[game] = (groups[game] || 0) + (Number(recording.bytes) || 0);
   }
   return { totalBytes, driveTotalBytes: drive.total, driveFreeBytes: drive.free,

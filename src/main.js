@@ -229,7 +229,7 @@ async function startSession() {
   sessionDate = todayKey();
   sessionStartedAt = Date.now();
   sessionMarkers = [];
-  sessionGame = activeGames[0] || '';
+  sessionGame = activeGames[0] || 'Desktop capture';
   showOverlayToast('Recording started', 'recording');
 }
 function finalizeSessionMetadata() {
@@ -1064,7 +1064,20 @@ function registerHotkey() {
   if (settings.clipHotkey) globalShortcut.register(settings.clipHotkey, () => saveClip());
   if (settings.markerHotkey && settings.markerHotkey !== settings.clipHotkey) globalShortcut.register(settings.markerHotkey, addTimelineMarker);
 }
-async function saveClip() { try { await obs.saveClip(); lastClip = new Date().toISOString(); lastError = ''; showOverlayToast('Clip saved', 'clip-saved'); } catch (e) { setError(e); } broadcast(); }
+async function saveClip() {
+  try {
+    const before = new Set(recentRecordings().map(item => item.path));
+    await obs.saveClip();
+    let savedReplay = null;
+    for (let attempt = 0; attempt < 10 && !savedReplay; attempt++) {
+      savedReplay = recentRecordings().find(item => item.kind === 'replay' && !before.has(item.path));
+      if (!savedReplay) await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (savedReplay && sessionGame) libraryMetadata.update(savedReplay.path, { game: sessionGame });
+    lastClip = new Date().toISOString(); lastError = ''; showOverlayToast('Clip saved', 'clip-saved');
+  } catch (e) { setError(e); }
+  broadcast();
+}
 
 let lastGameDisplayId = null;
 function overlayDisplay() {
@@ -1397,7 +1410,8 @@ ipcMain.handle('recording:stitch', async (_event, filePaths) => {
   try { await execFileAsync(ffmpegPath(), ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', manifest, '-map', '0', '-c', 'copy', outputPath], { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }); }
   catch (error) { throw new Error(error.stderr?.trim() || 'FFmpeg could not stitch these clips. Clips must use compatible formats.'); }
   finally { fs.rmSync(manifest, { force: true }); }
-  libraryMetadata.update(outputPath, { title: 'Compilation', tags: ['compilation'] });
+  const games = [...new Set(targets.map(target => libraryMetadata.get(target).game).filter(Boolean))];
+  libraryMetadata.update(outputPath, { title: 'Compilation', tags: ['compilation'], game: games.length === 1 ? games[0] : '' });
   await broadcast(); return { outputPath, state: await state() };
 });
 ipcMain.handle('recording:delete', async (_event, filePaths) => {
@@ -1483,7 +1497,10 @@ ipcMain.handle('window:modal-appearance', (event, active) => {
   if (senderWindow === win) senderWindow.setTitleBarOverlay(active ? titleBarAppearance.modal : titleBarAppearance.normal);
 });
 ipcMain.handle('recording:trim', async (_event, filePath, startSeconds, endSeconds, bitrate) => {
-  const outputPath = await trimRecording(filePath, startSeconds, endSeconds, bitrate);
+  const target = validateRecordingPath(filePath);
+  const outputPath = await trimRecording(target, startSeconds, endSeconds, bitrate);
+  const sourceMetadata = libraryMetadata.get(target);
+  if (sourceMetadata.game || sourceMetadata.tags?.length) libraryMetadata.update(outputPath, { game: sourceMetadata.game, tags: sourceMetadata.tags });
   return { outputPath, state: await state() };
 });
 ipcMain.handle('recording:audio-tracks', (_event, filePath) => recordingAudioTracks(filePath));
