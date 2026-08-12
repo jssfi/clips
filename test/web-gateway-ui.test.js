@@ -63,6 +63,10 @@ test('opening the browser UI reuses a connected tab', () => {
   assert.match(main, /gateway\.emit\('activate-ui'/);
   assert.match(web, /addEventListener\('activate-ui'/);
   assert.match(web, /window\.focus\(\)/);
+  assert.match(main, /browser-gateway\.json/);
+  assert.match(main, /attempt < 5/);
+  assert.match(web, /setTimeout\(reconnectGateway, 500\)/);
+  assert.match(web, /await pairGateway\(\)/);
 });
 
 test('isolated frame misses stay in diagnostics without showing an overlay', () => {

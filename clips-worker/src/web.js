@@ -68,6 +68,7 @@
   let gatewayPort = Number(fragment.get('port')) || 32191;
   let gatewayConnected = false;
   let gatewayAttempted = false;
+  let gatewayReconnectTimer = null;
   let events = null;
   let banner = null;
   let currentState = demoState;
@@ -129,8 +130,22 @@
       events?.close();
       events = null;
       setConnected(false);
-      updateBanner('the connection ended; reconnect after Clips is running again.');
+      updateBanner('Reconnecting to Clips…');
+      clearTimeout(gatewayReconnectTimer);
+      gatewayReconnectTimer = setTimeout(reconnectGateway, 500);
     });
+  }
+  async function reconnectGateway() {
+    try {
+      await activateGateway();
+      callbacks.state.forEach(callback => callback(clone(currentState)));
+    } catch {
+      if (localUi) {
+        await pairGateway();
+        return;
+      }
+      gatewayReconnectTimer = setTimeout(reconnectGateway, 1000);
+    }
   }
   async function activateGateway() {
     const state = await rpc('getState');
@@ -174,6 +189,10 @@
     } catch (error) {
       setConnected(false);
       updateBanner(error.message || 'Clips is not running.');
+      if (localUi) {
+        clearTimeout(gatewayReconnectTimer);
+        gatewayReconnectTimer = setTimeout(reconnectGateway, 1000);
+      }
     }
   }
 

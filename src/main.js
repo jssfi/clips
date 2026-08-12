@@ -76,7 +76,18 @@ let systemInformation = null;
 let previousCaptureHealth = null;
 let libraryMetadata = null;
 let microphoneListPromise = null;
-const gatewayToken = crypto.randomBytes(32).toString('base64url');
+const gatewayTokenPath = path.join(app.getPath('userData'), 'browser-gateway.json');
+function loadGatewayToken() {
+  try {
+    const token = String(JSON.parse(fs.readFileSync(gatewayTokenPath, 'utf8')).token || '');
+    if (/^[A-Za-z0-9_-]{43}$/.test(token)) return token;
+  } catch {}
+  const token = crypto.randomBytes(32).toString('base64url');
+  fs.mkdirSync(path.dirname(gatewayTokenPath), { recursive: true });
+  fs.writeFileSync(gatewayTokenPath, `${JSON.stringify({ token }, null, 2)}\n`, { mode: 0o600 });
+  return token;
+}
+const gatewayToken = loadGatewayToken();
 let gateway = null;
 let gatewayReady = false;
 let sessionStartedAt = 0;
@@ -1080,14 +1091,17 @@ function webAppLaunchUrl() {
   url.hash = new URLSearchParams({ gateway: gatewayToken, port: String(DEFAULT_GATEWAY_PORT) }).toString();
   return url.toString();
 }
-function openWebUi() {
+async function openWebUi() {
   if (!gatewayReady) {
     showMainWindow();
-    return Promise.resolve(false);
+    return false;
   }
-  if (gateway?.hasEventClients()) {
-    gateway.emit('activate-ui', { requestedAt: Date.now() });
-    return Promise.resolve(true);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (gateway?.hasEventClients()) {
+      gateway.emit('activate-ui', { requestedAt: Date.now() });
+      return true;
+    }
+    if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 250));
   }
   return shell.openExternal(webAppLaunchUrl()).catch(error => {
     logger.warn('could not open browser UI', { message: error.message });
@@ -1621,6 +1635,7 @@ app.whenReady().then(async () => {
       webCss: path.join(__dirname, '..', 'clips-worker', 'src', 'web.css')
     },
     approvePairing: async ({ origin, clientName }) => {
+      if (origin === `http://127.0.0.1:${DEFAULT_GATEWAY_PORT}`) return true;
       const options = {
         type: 'question',
         title: 'Connect browser to Clips?',
