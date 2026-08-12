@@ -66,3 +66,11 @@ test('capture status retains frame-drop health counters', async () => {
     renderedFrames: 300, laggedFrames: 4, outputFrames: 296, droppedFrames: 2
   });
 });
+
+test('high-frequency microphone meter polling stays out of the log', () => {
+  const events = [];
+  const controller = new ObsController(null, { info: (...args) => events.push(args) });
+  controller.child = { stdin: { writable: true, write: () => {} } };
+  controller.request('microphoneLevel', {}, 1).catch(() => {});
+  assert.equal(events.length, 0);
+});

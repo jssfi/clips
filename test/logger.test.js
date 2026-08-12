@@ -1,6 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { pruneLogText } = require('../src/logger');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createLogger, pruneLogText, redactLogText } = require('../src/logger');
 
 test('log pruning keeps only the recent hour', () => {
   const text = [
@@ -21,4 +24,21 @@ test('log pruning respects the file-size cap', () => {
   const result = pruneLogText(text, Date.parse('2026-07-29T11:00:00.000Z'), 50);
   assert.doesNotMatch(result, /first/);
   assert.match(result, /second/);
+});
+
+test('logs redact user paths, capture device ids, and window titles', () => {
+  const sensitive = 'C:\\Users\\tikru\\AppData title: BanaanaJ - Discord "microphoneDeviceId":"{0.0.1.00000000}.{4502c661-e199-45c7-ac7a-78d3eac69fe0}"';
+  const redacted = redactLogText(sensitive);
+  assert.doesNotMatch(redacted, /tikru|BanaanaJ|4502c661/i);
+  assert.match(redacted, /<redacted-user>/);
+  assert.match(redacted, /<redacted-window-title>/);
+});
+
+test('logger maintenance redacts sensitive text already on disk', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-log-'));
+  const filePath = path.join(directory, 'clips.log');
+  fs.writeFileSync(filePath, '[2026-08-12T19:00:00.000Z] [INFO] C:\\Users\\tikru\\AppData\n');
+  createLogger({ directory, now: () => Date.parse('2026-08-12T19:00:01.000Z') });
+  assert.doesNotMatch(fs.readFileSync(filePath, 'utf8'), /tikru/);
+  fs.rmSync(directory, { recursive: true, force: true });
 });

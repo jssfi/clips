@@ -627,6 +627,8 @@ private:
 		}
 		if (!video_encoder_)
 			throw std::runtime_error("No compatible H.264 encoder is available.");
+		fprintf(stderr, "[capture-host] selected video encoder=%s\n", selected);
+		fflush(stderr);
 
 		const int quality_value = quality_ == "Lossless" ? 1 : quality_ == "Small" ? 23 : quality_ == "Stream" ? 20 : 16;
 		DataRef settings(obs_data_create());

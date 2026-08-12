@@ -43,6 +43,7 @@ $binFiles = @(
     'srt.dll',
     'libx264-164.dll',
     'obs-ffmpeg-mux.exe',
+    'obs-amf-test.exe',
     'obs-nvenc-test.exe',
     'obs-qsv-test.exe'
 )

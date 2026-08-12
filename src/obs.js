@@ -18,7 +18,7 @@ class ObsController {
   request(command, data = {}, timeoutMs = 30000) {
     if (!this.child?.stdin?.writable) return Promise.reject(new Error('The Clips capture engine is offline.'));
     const id = ++this.nextRequestId;
-    if (command !== 'status') {
+    if (command !== 'status' && command !== 'microphoneLevel') {
       this.logger?.info('capture request', {
         id,
         command,

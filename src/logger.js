@@ -4,6 +4,14 @@ const path = require('path');
 const DEFAULT_MAX_AGE_MS = 60 * 60 * 1000;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 
+function redactLogText(value) {
+  return String(value || '')
+    .replace(/([A-Z]:\\Users\\)[^\\\s"}]+/gi, '$1<redacted-user>')
+    .replace(/\{0\.0\.\d+\.00000000\}\.\{[0-9a-f-]{36}\}/gi, '<redacted-device-id>')
+    .replace(/("(?:installationId|microphoneDeviceId)"\s*:\s*")[^"]+/gi, '$1<redacted>')
+    .replace(/(\btitle:\s*).+/gi, '$1<redacted-window-title>');
+}
+
 function pruneLogText(text, cutoffMs, maxBytes) {
   const recent = String(text)
     .split(/\r?\n/)
@@ -32,14 +40,15 @@ function createLogger({
       const size = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
       if (!force && current - lastMaintenance < 60_000 && size <= maxBytes) return;
       const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : '';
-      fs.writeFileSync(filePath, pruneLogText(existing, current - maxAgeMs, maxBytes));
+      fs.writeFileSync(filePath, redactLogText(pruneLogText(existing, current - maxAgeMs, maxBytes)));
       lastMaintenance = current;
     } catch {}
   };
   const write = (level, event, details) => {
     try {
-      const safeDetails = details == null ? '' : ` ${JSON.stringify(details)}`;
-      const line = `[${new Date(now()).toISOString()}] [${level}] ${String(event).replace(/[\r\n]+/g, ' ')}${safeDetails}\n`;
+      const safeDetails = details == null ? '' : ` ${redactLogText(JSON.stringify(details))}`;
+      const safeEvent = redactLogText(String(event).replace(/[\r\n]+/g, ' '));
+      const line = `[${new Date(now()).toISOString()}] [${level}] ${safeEvent}${safeDetails}\n`;
       fs.appendFileSync(filePath, line);
       maintain();
     } catch {}
@@ -58,4 +67,4 @@ function createLogger({
   };
 }
 
-module.exports = { createLogger, pruneLogText, DEFAULT_MAX_AGE_MS, DEFAULT_MAX_BYTES };
+module.exports = { createLogger, pruneLogText, redactLogText, DEFAULT_MAX_AGE_MS, DEFAULT_MAX_BYTES };
