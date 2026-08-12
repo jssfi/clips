@@ -12,6 +12,8 @@ const SEMVER = '\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?';
 const PREPARATION_DIRECTORY = new RegExp(`^${SEMVER}\\.preparing(?:-.+)?$`);
 const VERSION_DIRECTORY = new RegExp(`^(${SEMVER})(?:\\.app-[A-Za-z0-9-]+)?$`);
 const RETRYABLE_FILE_ERRORS = new Set(['EACCES', 'EBUSY', 'ENOTEMPTY', 'EPERM']);
+const DOWNLOAD_STREAMS = 8;
+const MINIMUM_DOWNLOAD_PART_SIZE = 8 * 1024 * 1024;
 
 function updateRoot(app) {
   return path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'jss-clips');
@@ -109,6 +111,109 @@ async function sha512(filePath) {
     input.on('end', resolve);
   });
   return hash.digest('base64');
+}
+
+function downloadRanges(size, streams = DOWNLOAD_STREAMS, minimumPartSize = MINIMUM_DOWNLOAD_PART_SIZE) {
+  const count = Math.min(streams, Math.floor(size / minimumPartSize));
+  if (count < 2) return [];
+  const partSize = Math.ceil(size / count);
+  return Array.from({ length: count }, (_value, index) => {
+    const start = index * partSize;
+    return { start, end: Math.min(size - 1, start + partSize - 1) };
+  });
+}
+
+async function writeResponseBody(response, file, position, expectedSize, onBytes) {
+  const reader = response.body.getReader();
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = Buffer.from(value);
+    if (received + chunk.length > expectedSize) {
+      throw new Error('The update server returned too much data.');
+    }
+    await file.write(chunk, 0, chunk.length, position + received);
+    received += chunk.length;
+    onBytes(chunk.length);
+  }
+  if (received !== expectedSize) throw new Error('The update server returned an incomplete download.');
+}
+
+async function downloadInRanges(url, archive, size, ranges, onBytes, fetchImpl) {
+  const controller = new AbortController();
+  const file = await fs.promises.open(archive, 'w');
+  try {
+    await file.truncate(size);
+    const downloads = ranges.map(async ({ start, end }) => {
+      const response = await fetchImpl(url, {
+        cache: 'no-store',
+        headers: {
+          'Accept-Encoding': 'identity',
+          Range: `bytes=${start}-${end}`
+        },
+        signal: controller.signal
+      });
+      const contentRange = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') || '');
+      if (
+        response.status !== 206
+        || !response.body
+        || !contentRange
+        || Number(contentRange[1]) !== start
+        || Number(contentRange[2]) !== end
+        || Number(contentRange[3]) !== size
+      ) {
+        throw new Error('The update server does not support parallel downloads.');
+      }
+      await writeResponseBody(response, file, start, end - start + 1, onBytes);
+    });
+    try {
+      await Promise.all(downloads);
+    } catch (error) {
+      controller.abort();
+      await Promise.allSettled(downloads);
+      throw error;
+    }
+  } finally {
+    await file.close();
+  }
+}
+
+async function downloadInOneStream(url, archive, size, onBytes, fetchImpl) {
+  const response = await fetchImpl(url, {
+    cache: 'no-store',
+    headers: { 'Accept-Encoding': 'identity' }
+  });
+  if (!response.ok || !response.body) throw new Error(`Update download failed (${response.status}).`);
+  const file = await fs.promises.open(archive, 'w');
+  try {
+    await writeResponseBody(response, file, 0, size, onBytes);
+  } finally {
+    await file.close();
+  }
+}
+
+async function downloadUpdateArchive(url, archive, size, onProgress = () => {}, {
+  fetchImpl = fetch,
+  streams = DOWNLOAD_STREAMS,
+  minimumPartSize = MINIMUM_DOWNLOAD_PART_SIZE
+} = {}) {
+  const ranges = downloadRanges(size, streams, minimumPartSize);
+  let received = 0;
+  const onBytes = bytes => {
+    received += bytes;
+    onProgress(received);
+  };
+  if (ranges.length) {
+    try {
+      await downloadInRanges(url, archive, size, ranges, onBytes, fetchImpl);
+      return;
+    } catch {
+      received = 0;
+      onProgress(0);
+    }
+  }
+  await downloadInOneStream(url, archive, size, onBytes, fetchImpl);
 }
 
 function isPreparationDirectory(name) {
@@ -265,29 +370,14 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     cleanupStalePreparations(versions).catch(() => {});
 
     try {
-      const response = await fetch(`${feedUrl}/${metadata.url}`, { cache: 'no-store' });
-      if (!response.ok || !response.body) throw new Error(`Update download failed (${response.status}).`);
-      const file = await fs.promises.open(archive, 'w');
-      let received = 0;
       let lastPercent = -1;
-      try {
-        const reader = response.body.getReader();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = Buffer.from(value);
-          await file.write(chunk);
-          received += chunk.length;
-          const percent = Math.min(99, Math.floor(received / metadata.size * 100));
-          if (percent !== lastPercent) {
-            lastPercent = percent;
-            emit({ status: 'downloading', version: metadata.version, percent, message: '' });
-          }
+      await downloadUpdateArchive(`${feedUrl}/${metadata.url}`, archive, metadata.size, received => {
+        const percent = Math.min(99, Math.floor(received / metadata.size * 100));
+        if (percent !== lastPercent) {
+          lastPercent = percent;
+          emit({ status: 'downloading', version: metadata.version, percent, message: '' });
         }
-      } finally {
-        await file.close();
-      }
-      if (received !== metadata.size) throw new Error('The downloaded update has the wrong size.');
+      });
       emit({ status: 'preparing', version: metadata.version, percent: 100, message: 'Preparing update…' });
       if ((await sha512(archive)) !== metadata.sha512) {
         throw new Error('The downloaded update failed its integrity check.');
@@ -371,6 +461,8 @@ module.exports = {
   isVersionDirectory,
   validateMetadata,
   authenticateMetadata,
+  downloadRanges,
+  downloadUpdateArchive,
   updateRelaunchArgs,
   redirectToActiveVersion,
   createStagedUpdater

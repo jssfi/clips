@@ -12,6 +12,8 @@ const {
   isVersionDirectory,
   validateMetadata,
   authenticateMetadata,
+  downloadRanges,
+  downloadUpdateArchive,
   updateRelaunchArgs
 } = require('../src/updater');
 
@@ -116,4 +118,60 @@ test('authenticateMetadata accepts only metadata signed by the trusted key', () 
   assert.equal(authenticateMetadata(metadata, publicKey).version, '0.1.12');
   assert.throws(() => authenticateMetadata({ ...metadata, size: 124 }, publicKey), /signature/i);
   assert.throws(() => authenticateMetadata({ ...metadata, signature: '' }, publicKey), /signature/i);
+});
+
+test('downloadRanges splits large updates into complete non-overlapping parts', () => {
+  assert.deepEqual(downloadRanges(10, 4, 3), [
+    { start: 0, end: 3 },
+    { start: 4, end: 7 },
+    { start: 8, end: 9 }
+  ]);
+  assert.deepEqual(downloadRanges(5, 4, 3), []);
+});
+
+test('update archives download over parallel byte ranges', async t => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-download-'));
+  const archive = path.join(temporary, 'update.zip');
+  const source = Buffer.from('a fast update delivered in several independently verified pieces');
+  const requestedRanges = [];
+  t.after(() => fs.rmSync(temporary, { recursive: true, force: true }));
+
+  await downloadUpdateArchive('https://updates.example/update.zip', archive, source.length, () => {}, {
+    streams: 4,
+    minimumPartSize: 8,
+    fetchImpl: async (_url, options) => {
+      requestedRanges.push(options.headers.Range);
+      const match = /^bytes=(\d+)-(\d+)$/.exec(options.headers.Range);
+      const start = Number(match[1]);
+      const end = Number(match[2]);
+      return new Response(source.subarray(start, end + 1), {
+        status: 206,
+        headers: { 'Content-Range': `bytes ${start}-${end}/${source.length}` }
+      });
+    }
+  });
+
+  assert.equal(requestedRanges.length, 4);
+  assert.deepEqual(fs.readFileSync(archive), source);
+});
+
+test('update archive download falls back when byte ranges are unsupported', async t => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-download-fallback-'));
+  const archive = path.join(temporary, 'update.zip');
+  const source = Buffer.from('a complete update from an older server');
+  let fullRequests = 0;
+  t.after(() => fs.rmSync(temporary, { recursive: true, force: true }));
+
+  await downloadUpdateArchive('https://updates.example/update.zip', archive, source.length, () => {}, {
+    streams: 4,
+    minimumPartSize: 8,
+    fetchImpl: async (_url, options) => {
+      if (options.headers.Range) return new Response(source, { status: 200 });
+      fullRequests += 1;
+      return new Response(source, { status: 200 });
+    }
+  });
+
+  assert.equal(fullRequests, 1);
+  assert.deepEqual(fs.readFileSync(archive), source);
 });

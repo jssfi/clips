@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Faster update downloads",
+    "changes": [
+      "Updates now use several verified download streams at once, allowing fast internet connections to finish downloading much sooner while retaining compatibility with older servers."
+    ]
+  },
+  {
     "version": "0.4-44b18a7d",
     "title": "Library sorting that matches its labels",
     "changes": [
