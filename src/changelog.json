@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-ab673a0b",
     "title": "Browser tabs survive restarts",
     "changes": [
       "The browser interface now reconnects after Clips or an update restarts, and tray actions wait briefly for the surviving tab before opening a new one."
