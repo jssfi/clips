@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-f1a3a330",
     "title": "Cleaner markers and library controls",
     "changes": [
       "Timeline markers are now a shortcut-only feature with a clear setting to disable them, while keeping the in-game saved confirmation.",
