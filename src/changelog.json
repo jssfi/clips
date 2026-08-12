@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Complete overlay warning cards",
+    "changes": [
+      "Fixed multi-line capture warnings and error notifications being cut off along their bottom edge."
+    ]
+  },
+  {
     "version": "0.4-9f46ef72",
     "title": "Clearer loading and reliable fullscreen",
     "changes": [

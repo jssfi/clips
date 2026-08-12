@@ -1245,7 +1245,9 @@ function createOverlayWindow() {
   const overlayWindow = new BrowserWindow({
     show: false,
     width: 420,
-    height: 140,
+    // Multi-line health and error details need more room than the original
+    // one-line recording toast. The window is transparent and click-through.
+    height: 220,
     frame: false,
     transparent: true,
     resizable: false,
