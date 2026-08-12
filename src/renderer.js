@@ -115,6 +115,7 @@ const values = () => ({
   maxRawRecordingGigabytes: Number($("raw-gigabytes").value),
   clipLengthSeconds: Number($("clip-length").value),
   clipHotkey: $("hotkey").dataset.accelerator || $("hotkey").value,
+  markerHotkey: $("marker-hotkey").value,
   stopDelaySeconds: Number($("delay").value),
   autoRecord: $("auto").checked,
   startWithWindows: $("startup").checked,
@@ -219,7 +220,8 @@ function render(s, fill = false) {
           : new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 }).format(recording.bytes / 1048576);
         const favoriteLabel = recording.favorite ? "Remove from favorites" : "Add to favorites";
         const selected = selectedRecordingPaths.has(recording.path);
-        return `<article class="recording-card${recording.favorite ? " favorite" : ""}${selected ? " selected" : ""}"><button class="recording-open" data-recording-path="${escapeHtml(recording.path)}" data-recording-name="${escapeHtml(recording.name)}" aria-label="Play ${escapeHtml(recording.name)}"><span class="recording-preview"><img class="recording-thumbnail" data-thumbnail-path="${escapeHtml(recording.path)}" alt=""><i class="recording-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i><i class="recording-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i></span><span class="recording-meta"><strong title="${escapeHtml(recording.name)}">${escapeHtml(recording.name)}</strong><span>${time} &middot; ${size}</span></span></button><button class="recording-select" data-select-path="${escapeHtml(recording.path)}" aria-pressed="${selected}" aria-label="${selected ? "Deselect" : "Select"} ${escapeHtml(recording.name)}" title="${selected ? "Deselect" : "Select"}"><i></i></button><button class="recording-favorite" data-favorite-path="${escapeHtml(recording.path)}" data-favorite="${recording.favorite ? "true" : "false"}" aria-label="${favoriteLabel}" title="${favoriteLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button><div class="recording-actions"><button class="recording-delete" data-delete-path="${escapeHtml(recording.path)}" data-delete-name="${escapeHtml(recording.name)}" aria-label="Delete ${escapeHtml(recording.name)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></article>`;
+        const markers = recording.markers?.length ? ` &middot; ${recording.markers.length} marker${recording.markers.length === 1 ? "" : "s"}` : "";
+        return `<article class="recording-card${recording.favorite ? " favorite" : ""}${selected ? " selected" : ""}"><button class="recording-open" data-recording-path="${escapeHtml(recording.path)}" data-recording-name="${escapeHtml(recording.title || recording.name)}" aria-label="Play ${escapeHtml(recording.title || recording.name)}"><span class="recording-preview"><img class="recording-thumbnail" data-thumbnail-path="${escapeHtml(recording.path)}" alt=""><i class="recording-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i><i class="recording-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i></span><span class="recording-meta"><strong title="${escapeHtml(recording.title || recording.name)}">${escapeHtml(recording.title || recording.name)}</strong><span>${time} &middot; ${size}${markers}</span></span></button><button class="recording-select" data-select-path="${escapeHtml(recording.path)}" aria-pressed="${selected}" aria-label="${selected ? "Deselect" : "Select"} ${escapeHtml(recording.name)}" title="${selected ? "Deselect" : "Select"}"><i></i></button><button class="recording-favorite" data-favorite-path="${escapeHtml(recording.path)}" data-favorite="${recording.favorite ? "true" : "false"}" aria-label="${favoriteLabel}" title="${favoriteLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button><div class="recording-actions"><button class="recording-delete" data-delete-path="${escapeHtml(recording.path)}" data-delete-name="${escapeHtml(recording.name)}" aria-label="Delete ${escapeHtml(recording.name)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></article>`;
       }).join("")
     : `<div class="empty compact"><div><strong>${emptyTitle}</strong><span>${emptyDetail}</span></div></div>`;
   $("replay-count").textContent = replays.length;
@@ -256,6 +258,7 @@ function render(s, fill = false) {
     ? `Clip saved ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(s.lastClip))}`
     : "Monitoring in background";
   $("clip-key").textContent = formatAccelerator(s.settings.clipHotkey, " ");
+  $("marker-key").textContent = formatAccelerator(s.settings.markerHotkey, " ");
   if (fill) {
     $("folder").value = s.settings.recordingsFolder;
     $("days").value = s.settings.retentionDays;
@@ -265,6 +268,7 @@ function render(s, fill = false) {
     $("clip-length").value = s.settings.clipLengthSeconds;
     $("hotkey").dataset.accelerator = s.settings.clipHotkey;
     $("hotkey").value = formatAccelerator(s.settings.clipHotkey);
+    $("marker-hotkey").value = s.settings.markerHotkey || "";
     $("delay").value = s.settings.stopDelaySeconds;
     $("auto").checked = s.settings.autoRecord;
     $("startup").checked = s.settings.startWithWindows;
@@ -608,6 +612,7 @@ $("connect").onclick = async () => {
 };
 $("record").onclick = async () => render(await window.clips.toggleRecording());
 $("clip").onclick = async () => render(await window.clips.saveClip());
+$("marker").onclick = async () => render(await window.clips.addMarker());
 $("library-folder").onclick = () => window.clips.openFolder();
 $("archive-folder").onclick = () => window.clips.openLibraryFolder();
 $("update-button").onclick = async () => {

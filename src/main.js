@@ -1358,6 +1358,7 @@ ipcMain.handle('recording:toggle', async () => {
   return state();
 });
 ipcMain.handle('clip:save', async () => { await saveClip(); return state(); });
+ipcMain.handle('marker:add', async () => { addTimelineMarker(); return state(); });
 ipcMain.handle('folder:open', () => shell.openPath(todayFolder()));
 ipcMain.handle('folder:open-root', () => { ensureDirectory(settings.recordingsFolder); return shell.openPath(settings.recordingsFolder); });
 ipcMain.handle('recording:open', async (_event, filePath) => {

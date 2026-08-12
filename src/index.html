@@ -101,6 +101,7 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v20M2 12h20"/></svg>
             Save clip <kbd id="clip-key">Ctrl Shift F10</kbd>
           </button>
+          <button id="marker" class="button ghost" type="button">Add marker <kbd id="marker-key">Ctrl Shift F9</kbd></button>
         </div>
       </header>
 
@@ -175,6 +176,7 @@
               <div class="settings-block">
                 <label class="settings-row" for="clip-length"><span><strong>Clip length</strong><small>How many seconds of the replay buffer to save.</small></span><span class="control-with-unit"><input id="clip-length" name="clipLengthSeconds" type="number" min="5" max="3600" inputmode="numeric"><em>sec</em></span></label>
                 <label class="settings-row" for="hotkey"><span><strong>Clip shortcut</strong><small>Click the field, press your shortcut, then release every key to save it.</small></span><span class="shortcut-control"><input id="hotkey" class="shortcut-capture" name="clipHotkey" readonly autocomplete="off" spellcheck="false"><em id="shortcut-feedback">Click to remap</em></span></label>
+                <label class="settings-row" for="marker-hotkey"><span><strong>Marker shortcut</strong><small>Add a moment to the current recording timeline without saving another file.</small></span><input id="marker-hotkey" name="markerHotkey" autocomplete="off"></label>
               </div>
             </section>
             <section class="settings-section">

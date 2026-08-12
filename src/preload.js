@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('clips', {
   connect: () => ipcRenderer.invoke('capture:connect'),
   toggleRecording: () => ipcRenderer.invoke('recording:toggle'),
   saveClip: () => ipcRenderer.invoke('clip:save'),
+  addMarker: () => ipcRenderer.invoke('marker:add'),
   openFolder: () => ipcRenderer.invoke('folder:open'),
   openLibraryFolder: () => ipcRenderer.invoke('folder:open-root'),
   openRecording: (filePath) => ipcRenderer.invoke('recording:open', filePath),
