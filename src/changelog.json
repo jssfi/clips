@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Library sorting that matches its labels",
+    "changes": [
+      "Largest first now ranks the entire Library in one list instead of sorting separately inside each day, while Game groups the whole Library by game; only chronological sorts retain day sections."
+    ]
+  },
+  {
     "version": "0.4-ef845337",
     "title": "Consistent shortcut controls",
     "changes": [

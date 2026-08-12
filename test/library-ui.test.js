@@ -36,3 +36,10 @@ test('clip and marker shortcuts share capture controls and disable buttons', () 
   assert.match(html, /id="disable-marker-hotkey"/);
   assert.match(renderer, /beginShortcutCapture\(markerShortcutInput, markerShortcutFeedback\)/);
 });
+
+test('non-chronological library sorts stop grouping recordings by day', () => {
+  assert.match(renderer, /const chronological = librarySort === "newest" \|\| librarySort === "oldest"/);
+  assert.match(renderer, /librarySort === "game" \? \(recording\.game \|\| "Older recordings \(game unknown\)"\)/);
+  assert.match(renderer, /: "Largest files"/);
+  assert.match(renderer, /!chronological \|\| !archivedFavorites\.length/);
+});

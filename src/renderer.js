@@ -256,20 +256,28 @@ function render(s, fill = false) {
   const archived = organize(s.archivedRecordings || []);
   const archivedFavorites = archived.filter(recording => recording.favorite);
   const archivedOthers = archived.filter(recording => !recording.favorite);
-  const byDay = archivedOthers.reduce((groups, recording) => {
-    (groups[recording.day] ||= []).push(recording);
+  const chronological = librarySort === "newest" || librarySort === "oldest";
+  const groupedItems = (chronological ? archivedOthers : archived).reduce((groups, recording) => {
+    const key = chronological ? recording.day
+      : librarySort === "game" ? (recording.game || "Older recordings (game unknown)")
+      : "Largest files";
+    (groups[key] ||= []).push(recording);
     return groups;
   }, {});
   $("archive-favorite-count").textContent = archivedFavorites.length;
-  $("archive-favorites-section").classList.toggle("hidden", !archivedFavorites.length);
+  $("archive-favorites-section").classList.toggle("hidden", !chronological || !archivedFavorites.length);
   $("archive-favorite-list").innerHTML = renderFiles(archivedFavorites, "", "");
   $("archive-summary").textContent = archived.length
-    ? `${archived.length} saved item${archived.length === 1 ? "" : "s"} across ${new Set(archived.map(item => item.day)).size} day${new Set(archived.map(item => item.day)).size === 1 ? "" : "s"}.`
+    ? librarySort === "size" ? `${archived.length} saved item${archived.length === 1 ? "" : "s"}, ranked by file size.`
+    : librarySort === "game" ? `${archived.length} saved item${archived.length === 1 ? "" : "s"}, grouped by game.`
+    : `${archived.length} saved item${archived.length === 1 ? "" : "s"} across ${new Set(archived.map(item => item.day)).size} day${new Set(archived.map(item => item.day)).size === 1 ? "" : "s"}.`
     : "Previous days saved on this device.";
   $("archive-days").innerHTML = archived.length
-    ? Object.entries(byDay).map(([day, items]) => {
-        const date = new Intl.DateTimeFormat(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(`${day}T12:00:00`));
-        return `<section class="archive-day"><div class="group-title"><h3>${escapeHtml(date)}</h3><span>${items.length}</span></div><div class="recording-list">${renderFiles(items, "", "")}</div></section>`;
+    ? Object.entries(groupedItems).map(([group, items]) => {
+        const heading = chronological
+          ? new Intl.DateTimeFormat(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(`${group}T12:00:00`))
+          : group;
+        return `<section class="archive-day"><div class="group-title"><h3>${escapeHtml(heading)}</h3><span>${items.length}</span></div><div class="recording-list">${renderFiles(items, "", "")}</div></section>`;
       }).join("")
     : '<div class="empty archive-empty"><div><strong>No previous days yet</strong><span>Older recordings will appear here, grouped by day.</span></div></div>';
   loadRecordingThumbnails();
