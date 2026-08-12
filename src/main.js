@@ -73,6 +73,7 @@ let previousCaptureHealth = null;
 let libraryMetadata = null;
 let sessionStartedAt = 0;
 let sessionMarkers = [];
+let sessionGame = '';
 let lastCaptureWarningTime = 0;
 let lastProblemOverlay = { message: '', time: 0 };
 const obs = new ObsController(() => broadcast(), logger);
@@ -228,7 +229,15 @@ async function startSession() {
   sessionDate = todayKey();
   sessionStartedAt = Date.now();
   sessionMarkers = [];
+  sessionGame = activeGames[0] || '';
   showOverlayToast('Recording started', 'recording');
+}
+function finalizeSessionMetadata() {
+  if (sessionMarkers.length || sessionGame) {
+    const candidates = recentRecordings().filter(item => item.kind === 'recording').sort((a, b) => b.modified.localeCompare(a.modified));
+    if (candidates[0]) libraryMetadata.update(candidates[0].path, { markers: sessionMarkers, game: sessionGame });
+  }
+  sessionMarkers = []; sessionStartedAt = 0; sessionGame = '';
 }
 function isRawRecordingName(name) {
   return /\.(mkv|mp4|mov|webm|flv)$/i.test(name)
@@ -831,6 +840,7 @@ async function monitor() {
         stopTimer = null;
         if (!activeGames.length) {
           await obs.stopSession().catch(setError);
+          finalizeSessionMetadata();
           sessionDate = '';
           await obs.disconnect().catch(() => {});
         }
@@ -1297,6 +1307,7 @@ ipcMain.handle('settings:save', async (_e, next) => {
       sessionDate = '';
     }
     settings = updated;
+    if (updated.recordingsFolder !== previous.recordingsFolder) libraryMetadata = new LibraryMetadata(path.join(app.getPath('userData'), 'library.json'), updated.recordingsFolder);
     persist();
     settingsCommitted = true;
     logger.info('settings saved', {
@@ -1342,11 +1353,7 @@ ipcMain.handle('recording:toggle', async () => {
     if (output.recording) {
       autoRecordSuppressed = activeGames.length > 0;
       await obs.stopSession();
-      if (sessionMarkers.length) {
-        const candidates = recentRecordings().filter(item => item.kind === 'recording').sort((a, b) => b.modified.localeCompare(a.modified));
-        if (candidates[0]) libraryMetadata.update(candidates[0].path, { markers: sessionMarkers, game: activeGames[0] || '' });
-      }
-      sessionMarkers = []; sessionStartedAt = 0;
+      finalizeSessionMetadata();
       sessionDate = '';
       await obs.disconnect();
       showOverlayToast('Recording stopped', 'recording-stopped');

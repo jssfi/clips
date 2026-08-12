@@ -1,5 +1,17 @@
 [
   {
+    "version": "next",
+    "title": "From recording to finished highlight",
+    "changes": [
+      "Added timeline markers with a dedicated shortcut so memorable moments can be flagged without creating extra replay files.",
+      "The library can now search and sort clips, with editable titles and tags stored without modifying video files.",
+      "Monitored games can override capture quality, resolution, frame rate, and replay length with per-game profiles.",
+      "Storage settings now show total library usage, free drive space, and a per-game breakdown.",
+      "Selected clips can be stitched into a single compilation while preserving their chosen order.",
+      "Capture settings now include a five-second local microphone recording and playback test."
+    ]
+  },
+  {
     "version": "0.4-e3634403",
     "title": "Capture health warnings",
     "changes": [
