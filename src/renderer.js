@@ -12,6 +12,8 @@ let editorMode = "trim";
 let mixingPath = "";
 let mixerLoadedPath = "";
 let liveMixTimer = null;
+let libraryQuery = "";
+let librarySort = "newest";
 const playerIcons = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
@@ -203,7 +205,15 @@ function render(s, fill = false) {
         )
         .join("")
     : '<div class="muted">No extra applications added. The active game audio is still recorded.</div>';
-  const recordings = s.recordings || [];
+  const organize = (items) => {
+    const query = libraryQuery.toLowerCase();
+    const filtered = query ? items.filter(item => [item.title, item.name, item.game, ...(item.tags || [])].join(" ").toLowerCase().includes(query)) : [...items];
+    return filtered.sort((a, b) => librarySort === "oldest" ? a.modified.localeCompare(b.modified)
+      : librarySort === "size" ? b.bytes - a.bytes
+      : librarySort === "game" ? (a.game || "Uncategorized").localeCompare(b.game || "Uncategorized")
+      : b.modified.localeCompare(a.modified));
+  };
+  const recordings = organize(s.recordings || []);
   const favorites = recordings.filter((item) => item.favorite);
   const replayTotal = recordings.filter((item) => item.kind === "replay").length;
   const recordingTotal = recordings.length - replayTotal;
@@ -231,7 +241,7 @@ function render(s, fill = false) {
   $("recent-favorite-list").innerHTML = renderFiles(favorites, "", "");
   $("replay-list").innerHTML = renderFiles(replays, "No replays yet", "Use the clip shortcut to save one.");
   $("recording-list").innerHTML = renderFiles(fullRecordings, "No full recordings", "A session appears here when recording starts.");
-  const archived = s.archivedRecordings || [];
+  const archived = organize(s.archivedRecordings || []);
   const archivedFavorites = archived.filter(recording => recording.favorite);
   const archivedOthers = archived.filter(recording => !recording.favorite);
   const byDay = archivedOthers.reduce((groups, recording) => {
@@ -615,6 +625,20 @@ $("clip").onclick = async () => render(await window.clips.saveClip());
 $("marker").onclick = async () => render(await window.clips.addMarker());
 $("library-folder").onclick = () => window.clips.openFolder();
 $("archive-folder").onclick = () => window.clips.openLibraryFolder();
+$("library-search").oninput = event => { libraryQuery = event.currentTarget.value.trim(); render(state); };
+$("library-sort").onchange = event => { librarySort = event.currentTarget.value; render(state); };
+document.addEventListener("dblclick", async event => {
+  const title = event.target.closest(".recording-meta strong");
+  const card = title?.closest(".recording-card");
+  const opener = card?.querySelector("[data-recording-path]");
+  if (!opener) return;
+  const recording = [...(state.recordings || []), ...(state.archivedRecordings || [])].find(item => item.path === opener.dataset.recordingPath);
+  const nextTitle = prompt("Clip title", recording?.title || recording?.name || "");
+  if (nextTitle == null) return;
+  const tags = prompt("Tags, separated by commas", (recording?.tags || []).join(", "));
+  if (tags == null) return;
+  render(await window.clips.updateRecordingMetadata(recording.path, { title: nextTitle, tags: tags.split(",") }));
+});
 $("update-button").onclick = async () => {
   const button = $("update-button");
   button.disabled = true;

@@ -1030,3 +1030,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+.library-tools { display:flex; gap:10px; margin:0 0 22px; }
+.library-tools input { flex:1; }
+.library-tools input, .library-tools select { min-height:38px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:inherit; padding:0 12px; }
