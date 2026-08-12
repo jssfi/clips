@@ -727,6 +727,9 @@ input:focus, select:focus, textarea:focus {
   justify-items: end;
   gap: 3px;
 }
+.shortcut-input-row { display: flex; align-items: center; gap: 7px; }
+.shortcut-input-row .shortcut-capture { width: 175px; }
+.shortcut-input-row .shortcut-disable { min-height: 31px; padding-inline: 8px; font-size: 10px; }
 .shortcut-control em {
   color: var(--faint);
   font-size: 10px;

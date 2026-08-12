@@ -116,8 +116,8 @@ const values = () => ({
   maxDiskUsagePercent: Number($("disk-percent").value),
   maxRawRecordingGigabytes: Number($("raw-gigabytes").value),
   clipLengthSeconds: Number($("clip-length").value),
-  clipHotkey: $("hotkey").dataset.accelerator || $("hotkey").value,
-  markerHotkey: $("marker-hotkey").value,
+  clipHotkey: $("hotkey").dataset.accelerator ?? "",
+  markerHotkey: $("marker-hotkey").dataset.accelerator ?? "",
   stopDelaySeconds: Number($("delay").value),
   autoRecord: $("auto").checked,
   startWithWindows: $("startup").checked,
@@ -288,8 +288,9 @@ function render(s, fill = false) {
     $("raw-gigabytes").value = s.settings.maxRawRecordingGigabytes;
     $("clip-length").value = s.settings.clipLengthSeconds;
     $("hotkey").dataset.accelerator = s.settings.clipHotkey;
-    $("hotkey").value = formatAccelerator(s.settings.clipHotkey);
-    $("marker-hotkey").value = s.settings.markerHotkey || "";
+    $("hotkey").value = formatAccelerator(s.settings.clipHotkey) || "Disabled";
+    $("marker-hotkey").dataset.accelerator = s.settings.markerHotkey || "";
+    $("marker-hotkey").value = formatAccelerator(s.settings.markerHotkey) || "Disabled";
     $("delay").value = s.settings.stopDelaySeconds;
     $("auto").checked = s.settings.autoRecord;
     $("startup").checked = s.settings.startWithWindows;
@@ -409,8 +410,8 @@ async function refreshMicrophones(selectedId) {
     select.disabled = true;
   }
 }
-const hotkeyInput = $("hotkey");
-const shortcutFeedback = $("shortcut-feedback");
+let shortcutInput = $("hotkey");
+let shortcutFeedback = $("shortcut-feedback");
 let shortcutCapturing = false;
 let shortcutPrevious = "";
 let shortcutPressedCodes = new Set();
@@ -421,46 +422,48 @@ const stopShortcutCapture = async ({ save = false, message = "Click to remap" } 
   shortcutCapturing = false;
   shortcutPressedCodes.clear();
   shortcutCapturedTokens.clear();
-  hotkeyInput.classList.remove("capturing");
+  shortcutInput.classList.remove("capturing");
   if (!save) {
-    hotkeyInput.dataset.accelerator = shortcutPrevious;
-    hotkeyInput.value = formatAccelerator(shortcutPrevious);
+    shortcutInput.dataset.accelerator = shortcutPrevious;
+    shortcutInput.value = formatAccelerator(shortcutPrevious) || "Disabled";
     shortcutFeedback.textContent = message;
     await window.clips.cancelHotkeyCapture();
     return;
   }
-  hotkeyInput.dataset.accelerator = accelerator;
-  hotkeyInput.value = formatAccelerator(accelerator);
+  shortcutInput.dataset.accelerator = accelerator;
+  shortcutInput.value = formatAccelerator(accelerator);
   shortcutFeedback.textContent = "Saving…";
   try {
     render(await window.clips.saveSettings(values()), true);
     shortcutFeedback.textContent = "Saved";
   } catch (error) {
-    hotkeyInput.dataset.accelerator = shortcutPrevious;
-    hotkeyInput.value = formatAccelerator(shortcutPrevious);
+    shortcutInput.dataset.accelerator = shortcutPrevious;
+    shortcutInput.value = formatAccelerator(shortcutPrevious) || "Disabled";
     shortcutFeedback.textContent = error.message || "Could not save shortcut";
     await window.clips.cancelHotkeyCapture();
   }
 };
-const beginShortcutCapture = async () => {
+const beginShortcutCapture = async (input = $("hotkey"), feedback = $("shortcut-feedback")) => {
   if (shortcutCapturing) return;
+  shortcutInput = input;
+  shortcutFeedback = feedback;
   shortcutCapturing = true;
-  shortcutPrevious = hotkeyInput.dataset.accelerator || hotkeyInput.value;
+  shortcutPrevious = shortcutInput.dataset.accelerator || "";
   shortcutPressedCodes.clear();
   shortcutCapturedTokens.clear();
-  hotkeyInput.value = "Press shortcut…";
-  hotkeyInput.classList.add("capturing");
+  shortcutInput.value = "Press shortcut…";
+  shortcutInput.classList.add("capturing");
   shortcutFeedback.textContent = "Release all keys to save";
   await window.clips.beginHotkeyCapture();
 };
-hotkeyInput.addEventListener("focus", beginShortcutCapture);
-hotkeyInput.addEventListener("keydown", (event) => {
+shortcutInput.addEventListener("focus", () => beginShortcutCapture($("hotkey"), $("shortcut-feedback")));
+shortcutInput.addEventListener("keydown", (event) => {
   if (!shortcutCapturing) return;
   event.preventDefault();
   event.stopPropagation();
   if (event.code === "Escape") {
     stopShortcutCapture({ message: "Cancelled" });
-    hotkeyInput.blur();
+    shortcutInput.blur();
     return;
   }
   if (event.repeat) return;
@@ -468,12 +471,12 @@ hotkeyInput.addEventListener("keydown", (event) => {
   const modifier = modifierCodeToken(event.code);
   const key = modifier || acceleratorKeyToken(event);
   if (key) shortcutCapturedTokens.add(key);
-  hotkeyInput.value = formatAccelerator(
+  shortcutInput.value = formatAccelerator(
     [...modifierTokens.filter((token) => shortcutCapturedTokens.has(token)),
       ...[...shortcutCapturedTokens].filter((token) => !modifierTokens.includes(token))].join("+"),
   ) || "Press shortcut…";
 });
-hotkeyInput.addEventListener("keyup", (event) => {
+shortcutInput.addEventListener("keyup", (event) => {
   if (!shortcutCapturing) return;
   event.preventDefault();
   event.stopPropagation();
@@ -485,17 +488,37 @@ hotkeyInput.addEventListener("keyup", (event) => {
       ? "Use one main key with any modifiers"
       : "Add a letter, number, function, or navigation key";
     shortcutCapturedTokens.clear();
-    hotkeyInput.value = "Try again…";
+    shortcutInput.value = "Try again…";
     return;
   }
   stopShortcutCapture({ save: true });
-  hotkeyInput.blur();
+  shortcutInput.blur();
 });
-hotkeyInput.addEventListener("blur", () => {
+shortcutInput.addEventListener("blur", () => {
   if (shortcutCapturing && shortcutPressedCodes.size === 0 && shortcutCapturedTokens.size === 0) {
     stopShortcutCapture({ message: "Cancelled" });
   }
 });
+const markerShortcutInput = $("marker-hotkey");
+const markerShortcutFeedback = $("marker-shortcut-feedback");
+markerShortcutInput.addEventListener("focus", () => beginShortcutCapture(markerShortcutInput, markerShortcutFeedback));
+for (const type of ["keydown", "keyup"]) markerShortcutInput.addEventListener(type, event => shortcutInput.dispatchEvent(new KeyboardEvent(type, {
+  key: event.key, code: event.code, ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, metaKey: event.metaKey,
+  repeat: event.repeat, bubbles: false, cancelable: true
+})));
+markerShortcutInput.addEventListener("blur", () => {
+  if (shortcutCapturing && shortcutInput === markerShortcutInput && shortcutPressedCodes.size === 0 && shortcutCapturedTokens.size === 0) stopShortcutCapture({ message: "Cancelled" });
+});
+const disableShortcut = async (input, feedback) => {
+  if (shortcutCapturing) await stopShortcutCapture({ message: "Cancelled" });
+  input.dataset.accelerator = "";
+  input.value = "Disabled";
+  feedback.textContent = "Saving…";
+  render(await window.clips.saveSettings(values()), true);
+  feedback.textContent = "Disabled";
+};
+$("disable-hotkey").onclick = () => disableShortcut($("hotkey"), $("shortcut-feedback"));
+$("disable-marker-hotkey").onclick = () => disableShortcut(markerShortcutInput, markerShortcutFeedback);
 $("game-list").onclick = async (e) => {
   if (e.target.dataset.remove != null) {
     state.settings.gameExecutables.splice(Number(e.target.dataset.remove), 1);

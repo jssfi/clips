@@ -18,7 +18,7 @@ test('library organization controls live in Library, not Recent', () => {
 test('marker is shortcut-only and can be disabled', () => {
   const titlebar = html.slice(html.indexOf('<header class="titlebar">'), html.indexOf('</header>'));
   assert.doesNotMatch(titlebar, /id="marker"/);
-  assert.match(html, /id="marker-hotkey"[^>]*placeholder="Disabled"/);
+  assert.match(html, /id="marker-hotkey" class="shortcut-capture"[^>]*readonly/);
 });
 
 test('library sort menu defines readable native option colors', () => {
@@ -28,4 +28,11 @@ test('library sort menu defines readable native option colors', () => {
 test('update check stays disabled and explains itself when an update is ready', () => {
   assert.match(renderer, /\["checking", "downloading", "preparing", "ready"\]\.includes\(s\.update\?\.status\)/);
   assert.match(renderer, /ready: "Update ready"/);
+});
+
+test('clip and marker shortcuts share capture controls and disable buttons', () => {
+  for (const id of ['hotkey', 'marker-hotkey']) assert.match(html, new RegExp(`id="${id}" class="shortcut-capture"[^>]*readonly`));
+  assert.match(html, /id="disable-hotkey"/);
+  assert.match(html, /id="disable-marker-hotkey"/);
+  assert.match(renderer, /beginShortcutCapture\(markerShortcutInput, markerShortcutFeedback\)/);
 });
