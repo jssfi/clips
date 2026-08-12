@@ -1052,6 +1052,7 @@ function updateSelectionBar() {
   const count = selectedRecordingPaths.size;
   $("selection-count").textContent = `${count} selected`;
   $("selection-bar").classList.toggle("hidden", !count);
+  $("selection-stitch").disabled = count < 2;
 }
 function toggleRecordingSelection(event) {
   const button = event.target.closest("[data-select-path]");
@@ -1093,6 +1094,14 @@ $("selection-clear").onclick = () => {
   updateSelectionBar();
 };
 $("selection-delete").onclick = () => requestDelete([...selectedRecordingPaths]);
+$("selection-stitch").onclick = async () => {
+  const button = $("selection-stitch"); button.disabled = true; button.textContent = "Stitching…";
+  try {
+    const result = await window.clips.stitchRecordings([...selectedRecordingPaths]);
+    selectedRecordingPaths.clear(); render(result.state); navigateToPage("recent");
+  } catch (error) { alert(error.message); }
+  finally { button.textContent = "Stitch clips"; updateSelectionBar(); }
+};
 $("confirm-delete").onclick = async () => {
   const button = $("confirm-delete");
   button.disabled = true;
