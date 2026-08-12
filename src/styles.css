@@ -1032,6 +1032,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .library-tools { display:flex; gap:10px; margin:0 0 22px; }
 .library-tools input { flex:1; }
-.library-tools input, .library-tools select { min-height:38px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:inherit; padding:0 12px; }
+.library-tools input, .library-tools select { min-height:38px; border:1px solid var(--border); border-radius:8px; background:#080808; color:#e4e4e7; padding:0 12px; color-scheme:dark; }
+.library-tools select option { background:#18181b; color:#f4f4f5; }
 .profile-controls { display:grid; grid-template-columns:repeat(2,minmax(110px,1fr)); gap:8px; width:min(520px,60%); }
 .profile-controls select,.profile-controls input { min-width:0; }

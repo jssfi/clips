@@ -221,7 +221,7 @@ function render(s, fill = false) {
       : librarySort === "game" ? (a.game || "Uncategorized").localeCompare(b.game || "Uncategorized")
       : b.modified.localeCompare(a.modified));
   };
-  const recordings = organize(s.recordings || []);
+  const recordings = s.recordings || [];
   const favorites = recordings.filter((item) => item.favorite);
   const replayTotal = recordings.filter((item) => item.kind === "replay").length;
   const recordingTotal = recordings.length - replayTotal;
