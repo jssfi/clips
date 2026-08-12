@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-9db435a2",
     "title": "Browser controls stay connected",
     "changes": [
       "The local browser interface now stays connected to Clips, so recording controls, settings, thumbnails, and playback continue using the installed app instead of falling back to demo data.",
