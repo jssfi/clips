@@ -190,6 +190,9 @@ function render(s, fill = false) {
       : `${s.lastError} Reconnect the capture engine or restart Clips.`
     : "";
   $("error").classList.toggle("hidden", !s.lastError);
+  const formatBytes = bytes => new Intl.NumberFormat(undefined, { style: "unit", unit: bytes >= 1073741824 ? "gigabyte" : "megabyte", maximumFractionDigits: 1 }).format(bytes / (bytes >= 1073741824 ? 1073741824 : 1048576));
+  $("storage-insights-summary").textContent = `${formatBytes(s.storage?.totalBytes || 0)} in Clips · ${formatBytes(s.storage?.driveFreeBytes || 0)} free on the drive.`;
+  $("storage-by-game").innerHTML = s.storage?.byGame?.length ? s.storage.byGame.map(item => `<div class="settings-row"><span><strong>${escapeHtml(item.game)}</strong><small>${formatBytes(item.bytes)}</small></span><meter min="0" max="${s.storage.totalBytes || 1}" value="${item.bytes}"></meter></div>`).join("") : '<div class="settings-row"><span class="muted">No recordings to measure yet.</span></div>';
   $("game-list").innerHTML = s.settings.gameExecutables.length
     ? s.settings.gameExecutables
         .map(
