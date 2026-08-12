@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-4ae40461",
     "title": "Withdrawn updates cannot restart",
     "changes": [
       "Restart to update now re-downloads and authenticates the current update metadata before stopping capture or relaunching, preventing a prepared build from installing after it has been withdrawn or replaced.",
