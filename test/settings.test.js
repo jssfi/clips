@@ -31,6 +31,11 @@ test('storage and microphone settings are normalized for persistence', () => {
   assert.equal(settings.microphoneNvidiaNoiseRemoval, true);
 });
 
+test('marker shortcut can be disabled by clearing it', () => {
+  const settings = normalizeSettingsUpdate({ ...base, markerHotkey: 'CommandOrControl+Shift+F9' }, { ...base, markerHotkey: '' });
+  assert.equal(settings.markerHotkey, '');
+});
+
 test('telemetry preference only accepts explicit consent choices', () => {
   assert.equal(normalizeSettingsUpdate(base, { ...base, telemetryMode: 'diagnostics' }).telemetryMode, 'diagnostics');
   assert.equal(normalizeSettingsUpdate(base, { ...base, telemetryMode: 'unexpected' }).telemetryMode, 'version');

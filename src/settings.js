@@ -26,7 +26,7 @@ function normalizeSettingsUpdate(current, next) {
     microphoneNvidiaNoiseRemoval: next.microphoneNvidiaNoiseRemoval !== false,
     microphoneNoiseSuppression: undefined,
     audioExecutables: Array.isArray(next.audioExecutables) ? next.audioExecutables : [],
-    markerHotkey: String(next.markerHotkey || current.markerHotkey || ''),
+    markerHotkey: String(next.markerHotkey ?? '').trim(),
     gameProfiles,
     nightlyUpdates: !!next.nightlyUpdates,
     telemetryMode: ['diagnostics', 'version', 'off'].includes(next.telemetryMode)

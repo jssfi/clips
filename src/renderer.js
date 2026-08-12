@@ -276,7 +276,6 @@ function render(s, fill = false) {
     ? `Clip saved ${new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(s.lastClip))}`
     : "Monitoring in background";
   $("clip-key").textContent = formatAccelerator(s.settings.clipHotkey, " ");
-  $("marker-key").textContent = formatAccelerator(s.settings.markerHotkey, " ");
   if (fill) {
     $("folder").value = s.settings.recordingsFolder;
     $("days").value = s.settings.retentionDays;
@@ -657,7 +656,6 @@ $("connect").onclick = async () => {
 };
 $("record").onclick = async () => render(await window.clips.toggleRecording());
 $("clip").onclick = async () => render(await window.clips.saveClip());
-$("marker").onclick = async () => render(await window.clips.addMarker());
 $("library-folder").onclick = () => window.clips.openFolder();
 $("archive-folder").onclick = () => window.clips.openLibraryFolder();
 $("library-search").oninput = event => { libraryQuery = event.currentTarget.value.trim(); render(state); };

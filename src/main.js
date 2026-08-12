@@ -1057,7 +1057,7 @@ function scheduleMonitor() {
 function addTimelineMarker() {
   if (!sessionStartedAt || !obs.lastStatus.recording) return;
   sessionMarkers.push({ id: crypto.randomUUID(), time: Math.max(0, (Date.now() - sessionStartedAt) / 1000), label: '' });
-  showOverlayToast(`Marker ${sessionMarkers.length} added`, 'clip-saved'); broadcast();
+  showOverlayToast(`Marker ${sessionMarkers.length} saved`, 'clip-saved'); broadcast();
 }
 function registerHotkey() {
   globalShortcut.unregisterAll();
@@ -1365,7 +1365,6 @@ ipcMain.handle('recording:toggle', async () => {
   return state();
 });
 ipcMain.handle('clip:save', async () => { await saveClip(); return state(); });
-ipcMain.handle('marker:add', async () => { addTimelineMarker(); return state(); });
 ipcMain.handle('folder:open', () => shell.openPath(todayFolder()));
 ipcMain.handle('folder:open-root', () => { ensureDirectory(settings.recordingsFolder); return shell.openPath(settings.recordingsFolder); });
 ipcMain.handle('recording:open', async (_event, filePath) => {
