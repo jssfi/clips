@@ -569,6 +569,27 @@ const updateMicrophoneVolumeLabel = () => {
 $("microphone-volume").addEventListener("input", () => {
   updateMicrophoneVolumeLabel();
 });
+$("microphone-test").onclick = async () => {
+  const button = $("microphone-test");
+  if ($("microphone").value === "disabled") { button.textContent = "Choose a microphone"; setTimeout(() => { button.textContent = "Test microphone"; }, 1800); return; }
+  let stream;
+  try {
+    button.disabled = true; button.textContent = "Recording 5…";
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const wantedLabel = $("microphone").selectedOptions[0]?.textContent?.toLowerCase() || "";
+    const device = devices.find(item => item.kind === "audioinput" && wantedLabel.includes(item.label.toLowerCase()));
+    stream = await navigator.mediaDevices.getUserMedia({ audio: device ? { deviceId: { exact: device.deviceId } } : true });
+    const chunks = []; const recorder = new MediaRecorder(stream);
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    const stopped = new Promise(resolve => { recorder.onstop = resolve; }); recorder.start();
+    for (let remaining = 5; remaining > 0; remaining--) { button.textContent = `Recording ${remaining}…`; await new Promise(resolve => setTimeout(resolve, 1000)); }
+    recorder.stop(); await stopped; stream.getTracks().forEach(track => track.stop()); stream = null;
+    button.textContent = "Playing test…";
+    const audio = new Audio(URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType })));
+    await audio.play(); await new Promise(resolve => { audio.onended = resolve; audio.onerror = resolve; }); URL.revokeObjectURL(audio.src);
+  } catch (error) { alert(`Microphone test failed: ${error.message}`); }
+  finally { stream?.getTracks().forEach(track => track.stop()); button.disabled = false; button.textContent = "Test microphone"; }
+};
 const updateMicrophoneNoiseGate = () => {
   const value = Number($("microphone-noise-gate").value);
   $("microphone-noise-gate-value").textContent = `${value} dB`;
