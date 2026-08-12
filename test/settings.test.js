@@ -14,6 +14,7 @@ const base = {
   microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
   audioExecutables: ['Discord.exe'],
+  desktopWindow: true,
   nightlyUpdates: true,
   telemetryMode: 'version'
 };
@@ -29,6 +30,11 @@ test('storage and microphone settings are normalized for persistence', () => {
   assert.equal(settings.microphoneVolumePercent, 100);
   assert.equal(settings.microphoneNoiseGateDb, -40);
   assert.equal(settings.microphoneNvidiaNoiseRemoval, true);
+});
+
+test('desktop window remains the default unless explicitly disabled', () => {
+  assert.equal(normalizeSettingsUpdate(base, { ...base }).desktopWindow, true);
+  assert.equal(normalizeSettingsUpdate(base, { ...base, desktopWindow: false }).desktopWindow, false);
 });
 
 test('marker shortcut can be disabled by clearing it', () => {

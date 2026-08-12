@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Use Clips from the web",
+    "changes": [
+      "An experimental Desktop window switch can now hand the interface over to clips.jss.fi/app while the installed app keeps recording, handling shortcuts, and showing overlays in the background.",
+      "The browser interface can securely pair with the local Clips gateway, control recording and settings, receive live updates, and play or edit recordings without uploading them. When Clips is unavailable, the same page remains an interactive demo."
+    ]
+  },
+  {
     "version": "0.4-abf9d17a",
     "title": "Faster update downloads",
     "changes": [

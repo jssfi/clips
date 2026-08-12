@@ -19,6 +19,7 @@ const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./t
 const { parseProcessList } = require('./process-list');
 const { displayVersion } = require('./version');
 const { LibraryMetadata, storageInsights, concatManifest } = require('./library');
+const { createGateway, DEFAULT_GATEWAY_PORT } = require('./gateway');
 const changelog = require('./changelog.json');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
@@ -31,6 +32,7 @@ const execFileAsync = promisify(execFile);
 let releaseConfig = {};
 try { releaseConfig = require('./release-config.json'); } catch {}
 const DEFAULT_UPDATE_URL = String(releaseConfig.updateUrl || '');
+const WEB_APP_URL = String(releaseConfig.webAppUrl || 'https://clips.jss.fi/app/');
 const DEFAULT_NVAFX_SDK_DIR = 'C:\\Program Files\\NVIDIA Corporation\\NVIDIA Audio Effects SDK';
 if (!process.env.NVAFX_SDK_DIR && fs.existsSync(path.join(DEFAULT_NVAFX_SDK_DIR, 'NVAudioEffects.dll'))) {
   // Staged updates relaunch from the old process, which does not inherit newly
@@ -49,6 +51,7 @@ const DEFAULTS = {
   microphoneDeviceId: 'disabled', microphoneVolumePercent: 100, microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
   trimBitrate: 'original',
+  desktopWindow: true,
   nightlyUpdates: false, telemetryMode: 'pending'
 };
 
@@ -71,6 +74,9 @@ let telemetry = null;
 let systemInformation = null;
 let previousCaptureHealth = null;
 let libraryMetadata = null;
+const gatewayToken = crypto.randomBytes(32).toString('base64url');
+let gateway = null;
+let gatewayReady = false;
 let sessionStartedAt = 0;
 let sessionMarkers = [];
 let sessionGame = '';
@@ -681,7 +687,11 @@ async function mixRecordingAudio(filePath, requestedAdjustments, replace) {
         progressBuffer = lines.pop() || '';
         for (const line of lines) {
           const match = line.match(/^progress=(continue|end)$/);
-          if (match && win && !win.isDestroyed()) win.webContents.send('audio:mix-progress', { complete: match[1] === 'end' });
+          if (match) {
+            const progress = { complete: match[1] === 'end' };
+            if (win && !win.isDestroyed()) win.webContents.send('audio:mix-progress', progress);
+            gateway?.emit('audio-mix-progress', progress);
+          }
         }
       });
       child.stderr.on('data', chunk => { errorText += chunk.toString(); });
@@ -745,9 +755,11 @@ async function trimRecording(filePath, startSeconds, endSeconds, requestedBitrat
         progressBuffer = lines.pop() || '';
         for (const line of lines) {
           const match = line.match(/^out_time_us=(\d+)$/);
-          if (match && win && !win.isDestroyed()) {
+          if (match) {
             const percent = Math.min(100, Number(match[1]) / 1000000 / duration * 100);
-            win.webContents.send('trim:progress', { percent, seconds: Number(match[1]) / 1000000, duration });
+            const progress = { percent, seconds: Number(match[1]) / 1000000, duration };
+            if (win && !win.isDestroyed()) win.webContents.send('trim:progress', progress);
+            gateway?.emit('trim-progress', progress);
           }
         }
       });
@@ -755,7 +767,9 @@ async function trimRecording(filePath, startSeconds, endSeconds, requestedBitrat
       child.once('error', reject);
       child.once('exit', code => code === 0 ? resolve() : reject(new Error(errorText.trim() || `FFmpeg exited with code ${code}.`)));
     });
-    if (win && !win.isDestroyed()) win.webContents.send('trim:progress', { percent: 100, seconds: duration, duration });
+    const complete = { percent: 100, seconds: duration, duration };
+    if (win && !win.isDestroyed()) win.webContents.send('trim:progress', complete);
+    gateway?.emit('trim-progress', complete);
   } catch (error) {
     fs.rmSync(outputPath, { force: true });
     throw new Error(error.stderr?.trim() || 'FFmpeg could not trim this recording.');
@@ -985,10 +999,29 @@ function showMainWindow() {
   win.show();
   win.focus();
 }
+function webAppLaunchUrl() {
+  const url = new URL(WEB_APP_URL);
+  url.hash = new URLSearchParams({ gateway: gatewayToken, port: String(DEFAULT_GATEWAY_PORT) }).toString();
+  return url.toString();
+}
+function openWebUi() {
+  if (!gatewayReady) {
+    showMainWindow();
+    return Promise.resolve(false);
+  }
+  return shell.openExternal(webAppLaunchUrl()).catch(error => {
+    logger.warn('could not open browser UI', { message: error.message });
+    showMainWindow();
+  });
+}
+function openPreferredUi() {
+  return settings?.desktopWindow === false ? openWebUi() : showMainWindow();
+}
 async function broadcast() {
   const currentState = await state();
   updateTray(currentState.obs.recording);
   if (win && !win.isDestroyed()) win.webContents.send('state', currentState);
+  gateway?.emit('state', currentState);
 }
 function setUpdateState(next) {
   updateState = { ...updateState, ...next, ...(next.version ? { version: displayVersion(next.version) } : {}) };
@@ -1192,7 +1225,7 @@ function createWindow() {
   const hidden = process.argv.includes('--hidden');
   win = new BrowserWindow({
     icon: path.join(__dirname, '..', 'assets', 'app-icon.ico'),
-    show: !hidden,
+    show: !hidden && settings.desktopWindow !== false,
     width: 1160,
     height: 780,
     minWidth: 900,
@@ -1209,46 +1242,7 @@ function createWindow() {
   win.on('close', e => { if (!app.isQuitting) { e.preventDefault(); win.hide(); } });
 }
 
-app.whenReady().then(async () => {
-  if (!gotSingleInstanceLock) return;
-  systemInformation = await collectSystemInformation();
-  logger.info('system information', systemInformation);
-  settings = loadSettings();
-  libraryMetadata = new LibraryMetadata(path.join(app.getPath('userData'), 'library.json'), settings.recordingsFolder);
-  loadFavorites();
-  persist();
-  logger.info('application ready', {
-    version: app.getVersion(),
-    packaged: app.isPackaged,
-    settingsPath: settingsPath(),
-    recordingsFolder: settings.recordingsFolder,
-    microphoneDeviceId: settings.microphoneDeviceId
-  });
-  await requestTelemetryPreference();
-  configureTelemetry({ sendStartup: true });
-  app.setLoginItemSettings({ openAtLogin: !!settings.startWithWindows, args: ['--hidden'] });
-  createWindow(); createOverlayWindow(); registerHotkey(); configureUpdates();
-  if (app.isPackaged) {
-    runtimeSetupPromise = ensureRuntimeInstalled(process.resourcesPath, persistentRuntimeRoot)
-      .then(stopLegacyBundledObs)
-      .then(() => broadcast())
-      .catch(error => setError(new Error(`Media runtime setup failed: ${error.message}`)));
-  }
-  scheduleMonitor();
-  tray = new Tray(trayIcon(false)); tray.setToolTip('jss/clips'); tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open jss/clips', click: showMainWindow }, { label: 'Save clip', click: saveClip }, { type: 'separator' },
-    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } }
-  ]));
-  tray.on('double-click', showMainWindow);
-  broadcast();
-});
-app.on('second-instance', showMainWindow);
-process.on('uncaughtExceptionMonitor', error => { logger.error('uncaught exception', { message: error.message, stack: error.stack }); telemetry?.reportError(error).catch(() => {}); });
-process.on('unhandledRejection', error => { logger.error('unhandled rejection', { message: error?.message || String(error), stack: error?.stack }); telemetry?.reportError(error).catch(() => {}); });
-app.on('will-quit', () => { logger.info('application quitting'); if (microphoneVolumePersistTimer) persist(); logger.maintain(); clearTimeout(toastHideTimer); clearTimeout(toastRecoveryTimer); clearTimeout(microphoneVolumePersistTimer); clearTimeout(monitorTimer); clearTimeout(updateCheckTimeout); clearInterval(updateCheckTimer); obs.disconnect().catch(() => {}); closeMpvSession(); mediaServer?.close(); globalShortcut.unregisterAll(); });
-
-ipcMain.handle('state:get', state);
-ipcMain.handle('update:install', async () => {
+async function installUpdate() {
   if (updateState.status !== 'ready') return false;
   if (process.env.CLIPS_UPDATE_MOCK === '1' && !app.isPackaged) {
     app.isQuitting = true;
@@ -1263,35 +1257,28 @@ ipcMain.handle('update:install', async () => {
   }
   await obs.disconnect().catch(error => logger.warn('capture shutdown before update failed', { message: error.message }));
   return stagedUpdater?.restart() || false;
-});
-ipcMain.handle('update:check', () => {
+}
+
+function checkForUpdates() {
   if (!app.isPackaged || !updateFeedUrl() || ['checking', 'downloading', 'preparing', 'ready'].includes(updateState.status)) return false;
   stagedUpdater?.check();
   return true;
-});
-ipcMain.handle('hotkey:capture-start', () => {
-  globalShortcut.unregisterAll();
-  return true;
-});
-ipcMain.handle('hotkey:capture-cancel', () => {
-  registerHotkey();
-  return true;
-});
-ipcMain.handle('capture:connect', async () => {
+}
+
+async function reconnectCapture() {
   try {
     const current = await obs.status();
     if (current.recording) throw new Error('Stop recording before reconnecting the capture engine.');
     if (obs.connected) await obs.disconnect();
     await tryConnect();
-    // Reconnecting is a health check while idle; do not leave libobs video/GPU
-    // resources alive until an actual recording session needs them.
     if (obs.connected && !activeGames.length) await obs.disconnect();
   } catch (error) {
     setError(error);
   }
   return state();
-});
-ipcMain.handle('settings:save', async (_e, next) => {
+}
+
+async function saveSettings(next, { openWebOnDisable = true } = {}) {
   const previous = settings;
   let settingsCommitted = false;
   clearTimeout(stopTimer); stopTimer = null;
@@ -1301,6 +1288,7 @@ ipcMain.handle('settings:save', async (_e, next) => {
     ensureDirectory(updated.recordingsFolder);
     const nightlyUpdatesChanged = updated.nightlyUpdates !== previous.nightlyUpdates;
     const telemetryModeChanged = updated.telemetryMode !== previous.telemetryMode;
+    const desktopWindowChanged = updated.desktopWindow !== previous.desktopWindow;
     const recordingSettingsChanged = ['obsRecordingQuality', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
       .some(key => updated[key] !== previous[key]);
     const microphoneVolumeChanged = updated.microphoneVolumePercent !== previous.microphoneVolumePercent;
@@ -1326,6 +1314,7 @@ ipcMain.handle('settings:save', async (_e, next) => {
     logger.info('settings saved', {
       recordingsFolder: settings.recordingsFolder,
       microphoneDeviceId: settings.microphoneDeviceId,
+      desktopWindow: settings.desktopWindow,
       restartCapture
     });
     app.setLoginItemSettings({ openAtLogin: !!settings.startWithWindows, args: ['--hidden'] });
@@ -1341,17 +1330,21 @@ ipcMain.handle('settings:save', async (_e, next) => {
         clipLengthSeconds: settings.clipLengthSeconds
       });
     }
-    if (obs.connected && microphoneVolumeChanged) {
-      await obs.setMicrophoneVolume(settings.microphoneVolumePercent);
-    }
-    if (obs.connected && microphoneNoiseGateChanged) {
-      await obs.setMicrophoneNoiseGate(settings.microphoneNoiseGateDb);
-    }
-    if (obs.connected && microphoneNvidiaNoiseRemovalChanged) {
-      await obs.setMicrophoneNvidiaNoiseRemoval(settings.microphoneNvidiaNoiseRemoval);
-    }
+    if (obs.connected && microphoneVolumeChanged) await obs.setMicrophoneVolume(settings.microphoneVolumePercent);
+    if (obs.connected && microphoneNoiseGateChanged) await obs.setMicrophoneNoiseGate(settings.microphoneNoiseGateDb);
+    if (obs.connected && microphoneNvidiaNoiseRemovalChanged) await obs.setMicrophoneNvidiaNoiseRemoval(settings.microphoneNvidiaNoiseRemoval);
     if (restartCapture) await startSession();
     lastError = '';
+    if (desktopWindowChanged) {
+      setImmediate(() => {
+        if (settings.desktopWindow === false) {
+          win?.hide();
+          if (openWebOnDisable) openWebUi();
+        } else {
+          showMainWindow();
+        }
+      });
+    }
   } catch (error) {
     if (!settingsCommitted) settings = previous;
     setError(error);
@@ -1359,8 +1352,9 @@ ipcMain.handle('settings:save', async (_e, next) => {
     scheduleMonitor();
   }
   return state();
-});
-ipcMain.handle('recording:toggle', async () => {
+}
+
+async function toggleRecording() {
   try {
     const output = await obs.status();
     if (output.recording) {
@@ -1376,31 +1370,33 @@ ipcMain.handle('recording:toggle', async () => {
     }
   } catch (error) { setError(error); }
   return state();
-});
-ipcMain.handle('clip:save', async () => { await saveClip(); return state(); });
-ipcMain.handle('folder:open', () => shell.openPath(todayFolder()));
-ipcMain.handle('folder:open-root', () => { ensureDirectory(settings.recordingsFolder); return shell.openPath(settings.recordingsFolder); });
-ipcMain.handle('recording:open', async (_event, filePath) => {
+}
+
+function openRecording(filePath) {
   const target = validateRecordingPath(filePath);
   const executable = mpvPath();
   if (!executable) throw new Error('Bundled MPV is missing from this Clips build.');
   spawn(executable, ['--force-window=yes', target], { detached: true, windowsHide: false, stdio: 'ignore' }).unref();
-});
-ipcMain.handle('recording:thumbnail', (_event, filePath) => recordingThumbnail(filePath));
-ipcMain.handle('recording:favorite', async (_event, filePath, favorite) => {
+  return true;
+}
+
+async function setRecordingFavorite(filePath, favorite) {
   const target = validateRecordingPath(filePath);
   const key = recordingKey(target);
   if (favorite) favoriteRecordingKeys.add(key); else favoriteRecordingKeys.delete(key);
   persistFavorites();
   await broadcast();
   return state();
-});
-ipcMain.handle('recording:metadata', async (_event, filePath, change) => {
+}
+
+async function updateRecordingMetadata(filePath, change) {
   const target = validateRecordingPath(filePath);
   libraryMetadata.update(target, change || {});
-  await broadcast(); return state();
-});
-ipcMain.handle('recording:stitch', async (_event, filePaths) => {
+  await broadcast();
+  return state();
+}
+
+async function stitchRecordings(filePaths) {
   const targets = [...new Set((filePaths || []).map(validateRecordingPath))];
   if (targets.length < 2) throw new Error('Select at least two clips to stitch.');
   const manifest = path.join(app.getPath('temp'), `clips-stitch-${crypto.randomUUID()}.txt`);
@@ -1412,9 +1408,11 @@ ipcMain.handle('recording:stitch', async (_event, filePaths) => {
   finally { fs.rmSync(manifest, { force: true }); }
   const games = [...new Set(targets.map(target => libraryMetadata.get(target).game).filter(Boolean))];
   libraryMetadata.update(outputPath, { title: 'Compilation', tags: ['compilation'], game: games.length === 1 ? games[0] : '' });
-  await broadcast(); return { outputPath, state: await state() };
-});
-ipcMain.handle('recording:delete', async (_event, filePaths) => {
+  await broadcast();
+  return { outputPath, state: await state() };
+}
+
+async function deleteRecordings(filePaths) {
   const targets = [...new Set((Array.isArray(filePaths) ? filePaths : [filePaths]).map(validateRecordingPath))];
   const captureStatus = await obs.status();
   if (captureStatus.recording && targets.some(target => path.dirname(target) === path.join(settings.recordingsFolder, todayKey()) && isRawRecordingName(path.basename(target)))) {
@@ -1430,7 +1428,169 @@ ipcMain.handle('recording:delete', async (_event, filePaths) => {
   persistFavorites();
   await broadcast();
   return state();
+}
+
+async function listMicrophones() {
+  const wasConnected = obs.connected;
+  if (!wasConnected && !await tryConnect()) return [];
+  try { return await obs.microphones(); }
+  finally {
+    if (!wasConnected && !obs.lastStatus.recording) await obs.disconnect().catch(() => {});
+  }
+}
+
+async function trimRecordingAction(filePath, startSeconds, endSeconds, bitrate) {
+  const target = validateRecordingPath(filePath);
+  const outputPath = await trimRecording(target, startSeconds, endSeconds, bitrate);
+  const sourceMetadata = libraryMetadata.get(target);
+  if (sourceMetadata.game || sourceMetadata.tags?.length) libraryMetadata.update(outputPath, { game: sourceMetadata.game, tags: sourceMetadata.tags });
+  return { outputPath, state: await state() };
+}
+
+async function mixRecordingAction(filePath, adjustments, replace) {
+  const target = validateRecordingPath(filePath);
+  const captureStatus = await obs.status();
+  if (replace && captureStatus.recording && path.dirname(target) === path.join(settings.recordingsFolder, todayKey()) && isRawRecordingName(path.basename(target))) {
+    throw new Error('Stop the active recording before saving audio changes to it. You can still save a new clip.');
+  }
+  const outputPath = await mixRecordingAudio(target, adjustments, !!replace);
+  await broadcast();
+  return { outputPath, state: await state() };
+}
+
+async function chooseFolder() {
+  const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] });
+  return result.canceled ? null : result.filePaths[0];
+}
+
+async function gatewayInvoke(method, args) {
+  const actions = {
+    getState: () => state(),
+    installUpdate,
+    checkForUpdates,
+    beginHotkeyCapture: () => { globalShortcut.unregisterAll(); return true; },
+    cancelHotkeyCapture: () => { registerHotkey(); return true; },
+    connect: reconnectCapture,
+    saveSettings: () => saveSettings(args[0], { openWebOnDisable: false }),
+    toggleRecording,
+    saveClip: async () => { await saveClip(); return state(); },
+    openFolder: () => shell.openPath(todayFolder()),
+    openLibraryFolder: () => { ensureDirectory(settings.recordingsFolder); return shell.openPath(settings.recordingsFolder); },
+    openRecording: () => openRecording(args[0]),
+    getRecordingThumbnail: () => recordingThumbnail(args[0]),
+    setRecordingFavorite: () => setRecordingFavorite(args[0], args[1]),
+    updateRecordingMetadata: () => updateRecordingMetadata(args[0], args[1]),
+    stitchRecordings: () => stitchRecordings(args[0]),
+    deleteRecordings: () => deleteRecordings(args[0]),
+    getRecordingMedia: () => recordingMediaUrl(args[0]),
+    listMicrophones,
+    microphoneLevel: () => obs.microphoneLevel(),
+    trimRecording: () => trimRecordingAction(args[0], args[1], args[2], args[3]),
+    getAudioTracks: () => recordingAudioTracks(args[0]),
+    mixRecordingAudio: () => mixRecordingAction(args[0], args[1], args[2]),
+    chooseFolder,
+    openLogs: () => { shell.showItemInFolder(logger.filePath); return true; },
+    listProcesses: processes
+  };
+  if (!Object.hasOwn(actions, method)) throw new Error('This Clips action is not available in the browser.');
+  return actions[method]();
+}
+
+app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return;
+  systemInformation = await collectSystemInformation();
+  logger.info('system information', systemInformation);
+  settings = loadSettings();
+  libraryMetadata = new LibraryMetadata(path.join(app.getPath('userData'), 'library.json'), settings.recordingsFolder);
+  loadFavorites();
+  persist();
+  logger.info('application ready', {
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    settingsPath: settingsPath(),
+    recordingsFolder: settings.recordingsFolder,
+    microphoneDeviceId: settings.microphoneDeviceId
+  });
+  await requestTelemetryPreference();
+  configureTelemetry({ sendStartup: true });
+  app.setLoginItemSettings({ openAtLogin: !!settings.startWithWindows, args: ['--hidden'] });
+  createWindow(); createOverlayWindow(); registerHotkey(); configureUpdates();
+  gateway = createGateway({
+    token: gatewayToken,
+    invoke: gatewayInvoke,
+    logger,
+    allowedOrigins: [
+      new URL(WEB_APP_URL).origin,
+      ...(!app.isPackaged ? ['http://127.0.0.1:8787', 'http://localhost:8787'] : [])
+    ],
+    approvePairing: async ({ origin, clientName }) => {
+      const options = {
+        type: 'question',
+        title: 'Connect browser to Clips?',
+        message: 'Allow the Clips website to control this app?',
+        detail: `${clientName} at ${origin} will be able to view your library, change settings, and control recording while Clips is running.`,
+        buttons: ['Allow', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true
+      };
+      const result = win?.isVisible()
+        ? await dialog.showMessageBox(win, options)
+        : await dialog.showMessageBox(options);
+      return result.response === 0;
+    }
+  });
+  try {
+    await Promise.all([startMediaServer(), gateway.start()]);
+    gatewayReady = true;
+    logger.info('web gateway ready', { port: DEFAULT_GATEWAY_PORT, origin: new URL(WEB_APP_URL).origin });
+  } catch (error) {
+    gatewayReady = false;
+    setError(new Error(`Browser gateway could not start: ${error.message}`));
+  }
+  if (app.isPackaged) {
+    runtimeSetupPromise = ensureRuntimeInstalled(process.resourcesPath, persistentRuntimeRoot)
+      .then(stopLegacyBundledObs)
+      .then(() => broadcast())
+      .catch(error => setError(new Error(`Media runtime setup failed: ${error.message}`)));
+  }
+  scheduleMonitor();
+  tray = new Tray(trayIcon(false)); tray.setToolTip('jss/clips'); tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open jss/clips', click: openPreferredUi }, { label: 'Open desktop window', click: showMainWindow }, { label: 'Save clip', click: saveClip }, { type: 'separator' },
+    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } }
+  ]));
+  tray.on('double-click', openPreferredUi);
+  broadcast();
+  if (!process.argv.includes('--hidden') && settings.desktopWindow === false) openWebUi();
 });
+app.on('second-instance', openPreferredUi);
+process.on('uncaughtExceptionMonitor', error => { logger.error('uncaught exception', { message: error.message, stack: error.stack }); telemetry?.reportError(error).catch(() => {}); });
+process.on('unhandledRejection', error => { logger.error('unhandled rejection', { message: error?.message || String(error), stack: error?.stack }); telemetry?.reportError(error).catch(() => {}); });
+app.on('will-quit', () => { logger.info('application quitting'); if (microphoneVolumePersistTimer) persist(); logger.maintain(); clearTimeout(toastHideTimer); clearTimeout(toastRecoveryTimer); clearTimeout(microphoneVolumePersistTimer); clearTimeout(monitorTimer); clearTimeout(updateCheckTimeout); clearInterval(updateCheckTimer); obs.disconnect().catch(() => {}); closeMpvSession(); mediaServer?.close(); gateway?.close(); globalShortcut.unregisterAll(); });
+
+ipcMain.handle('state:get', state);
+ipcMain.handle('update:install', installUpdate);
+ipcMain.handle('update:check', checkForUpdates);
+ipcMain.handle('hotkey:capture-start', () => {
+  globalShortcut.unregisterAll();
+  return true;
+});
+ipcMain.handle('hotkey:capture-cancel', () => {
+  registerHotkey();
+  return true;
+});
+ipcMain.handle('capture:connect', reconnectCapture);
+ipcMain.handle('settings:save', (_event, next) => saveSettings(next));
+ipcMain.handle('recording:toggle', toggleRecording);
+ipcMain.handle('clip:save', async () => { await saveClip(); return state(); });
+ipcMain.handle('folder:open', () => shell.openPath(todayFolder()));
+ipcMain.handle('folder:open-root', () => { ensureDirectory(settings.recordingsFolder); return shell.openPath(settings.recordingsFolder); });
+ipcMain.handle('recording:open', (_event, filePath) => openRecording(filePath));
+ipcMain.handle('recording:thumbnail', (_event, filePath) => recordingThumbnail(filePath));
+ipcMain.handle('recording:favorite', (_event, filePath, favorite) => setRecordingFavorite(filePath, favorite));
+ipcMain.handle('recording:metadata', (_event, filePath, change) => updateRecordingMetadata(filePath, change));
+ipcMain.handle('recording:stitch', (_event, filePaths) => stitchRecordings(filePaths));
+ipcMain.handle('recording:delete', (_event, filePaths) => deleteRecordings(filePaths));
 ipcMain.handle('mpv:start', (_event, filePath, bounds) => startMpvSession(filePath, bounds));
 ipcMain.handle('mpv:bounds', (_event, bounds) => setMpvBounds(bounds));
 ipcMain.handle('mpv:status', () => mpvStatus());
@@ -1453,14 +1613,7 @@ ipcMain.handle('mpv:fullscreen', (_event, filePath) => {
   fullscreenPlayer.unref();
   return true;
 });
-ipcMain.handle('capture:microphones', async () => {
-  const wasConnected = obs.connected;
-  if (!wasConnected && !await tryConnect()) return [];
-  try { return await obs.microphones(); }
-  finally {
-    if (!wasConnected && !obs.lastStatus.recording) await obs.disconnect().catch(() => {});
-  }
-});
+ipcMain.handle('capture:microphones', listMicrophones);
 ipcMain.on('capture:microphone-volume-set', (_event, requestedPercent) => {
   const percent = Math.min(200, Math.max(0, Math.round(Number(requestedPercent) || 0)));
   settings = { ...settings, microphoneVolumePercent: percent };
@@ -1496,24 +1649,9 @@ ipcMain.handle('window:modal-appearance', (event, active) => {
   const senderWindow = BrowserWindow.fromWebContents(event.sender);
   if (senderWindow === win) senderWindow.setTitleBarOverlay(active ? titleBarAppearance.modal : titleBarAppearance.normal);
 });
-ipcMain.handle('recording:trim', async (_event, filePath, startSeconds, endSeconds, bitrate) => {
-  const target = validateRecordingPath(filePath);
-  const outputPath = await trimRecording(target, startSeconds, endSeconds, bitrate);
-  const sourceMetadata = libraryMetadata.get(target);
-  if (sourceMetadata.game || sourceMetadata.tags?.length) libraryMetadata.update(outputPath, { game: sourceMetadata.game, tags: sourceMetadata.tags });
-  return { outputPath, state: await state() };
-});
+ipcMain.handle('recording:trim', (_event, filePath, startSeconds, endSeconds, bitrate) => trimRecordingAction(filePath, startSeconds, endSeconds, bitrate));
 ipcMain.handle('recording:audio-tracks', (_event, filePath) => recordingAudioTracks(filePath));
-ipcMain.handle('recording:audio-mix', async (_event, filePath, adjustments, replace) => {
-  const target = validateRecordingPath(filePath);
-  const captureStatus = await obs.status();
-  if (replace && captureStatus.recording && path.dirname(target) === path.join(settings.recordingsFolder, todayKey()) && isRawRecordingName(path.basename(target))) {
-    throw new Error('Stop the active recording before saving audio changes to it. You can still save a new clip.');
-  }
-  const outputPath = await mixRecordingAudio(target, adjustments, !!replace);
-  await broadcast();
-  return { outputPath, state: await state() };
-});
-ipcMain.handle('folder:choose', async () => { const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }); return r.canceled ? null : r.filePaths[0]; });
+ipcMain.handle('recording:audio-mix', (_event, filePath, adjustments, replace) => mixRecordingAction(filePath, adjustments, replace));
+ipcMain.handle('folder:choose', chooseFolder);
 ipcMain.handle('logs:open', () => shell.showItemInFolder(logger.filePath));
 ipcMain.handle('processes:list', processes);

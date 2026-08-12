@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:*; img-src 'self' data:; media-src http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self' http://127.0.0.1:*">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:*; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self' http://127.0.0.1:*">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#000000">
   <title>Clips</title>
@@ -226,6 +226,7 @@
             <section class="settings-section">
               <div class="settings-section-title"><h2>Capture engine</h2></div>
               <div class="settings-block">
+                <label class="settings-row" for="desktop-window"><span><strong>Desktop window <em class="experimental-badge">Experimental</em></strong><small>Turn this off to use clips.jss.fi/app while Clips records and shows overlays in the background.</small></span><input id="desktop-window" name="desktopWindow" type="checkbox" role="switch"></label>
                 <label class="settings-row" for="delay"><span><strong>Stop delay</strong><small>Wait before stopping after the game closes.</small></span><span class="control-with-unit"><input id="delay" name="stopDelaySeconds" type="number" min="0" inputmode="numeric"><em>sec</em></span></label>
                 <div class="settings-row"><span><strong>Engine status</strong><small>Restart the private libobs host if capture becomes unavailable.</small></span><button id="connect" class="button outline" type="button">Reconnect</button></div>
               </div>
@@ -286,7 +287,7 @@
       </div>
       <div class="editor-workspace">
         <div class="editor-media">
-          <div id="mpv-stage" class="video-stage mpv-stage"><canvas id="mpv-canvas"></canvas><div id="mpv-loading"><strong>Starting embedded libmpv&hellip;</strong></div></div>
+          <div id="mpv-stage" class="video-stage mpv-stage"><canvas id="mpv-canvas"></canvas><video id="browser-video" playsinline></video><div id="mpv-loading"><strong>Starting player&hellip;</strong></div></div>
           <div id="player-controls" class="player-controls">
             <div class="transport">
               <button id="transport-play" type="button" class="button outline transport-icon" aria-label="Play" title="Play"></button>

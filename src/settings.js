@@ -28,6 +28,7 @@ function normalizeSettingsUpdate(current, next) {
     audioExecutables: Array.isArray(next.audioExecutables) ? next.audioExecutables : [],
     markerHotkey: String(next.markerHotkey ?? '').trim(),
     gameProfiles,
+    desktopWindow: next.desktopWindow !== false,
     nightlyUpdates: !!next.nightlyUpdates,
     telemetryMode: ['diagnostics', 'version', 'off'].includes(next.telemetryMode)
       ? next.telemetryMode

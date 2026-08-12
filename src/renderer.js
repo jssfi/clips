@@ -133,6 +133,7 @@ const values = () => ({
   gameExecutables: state.settings.gameExecutables,
   gameProfiles: state.settings.gameProfiles || {},
   trimBitrate: $("trim-bitrate").value,
+  desktopWindow: $("desktop-window").checked,
   nightlyUpdates: $("nightly-updates").checked,
   telemetryMode: $("telemetry-mode").value,
 });
@@ -313,6 +314,7 @@ function render(s, fill = false) {
     updateMicrophoneNoiseGate();
     refreshMicrophones(s.settings.microphoneDeviceId);
     $("trim-bitrate").value = s.settings.trimBitrate || "original";
+    $("desktop-window").checked = s.settings.desktopWindow !== false;
     $("nightly-updates").checked = !!s.settings.nightlyUpdates;
     $("telemetry-mode").value = ["diagnostics", "version", "off"].includes(s.settings.telemetryMode) ? s.settings.telemetryMode : "off";
     updateStorageVisibility();
@@ -887,12 +889,14 @@ async function openEmbeddedRecording({ filePath, name, mode }) {
   $("viewer-volume").value = "100";
   $("editor-status").textContent = mode === "view"
     ? "Opening in the embedded player…"
-    : "Opening the original recording in MPV…";
+    : "Opening the original recording…";
   $("export-trim").disabled = false;
   document.body.classList.add("editor-open");
   $("editor").show();
   try {
     const preview = await window.clips.startMpv(editingPath, mpvStageBounds());
+    $("mpv-stage").classList.toggle("browser-playback", !!preview.mediaUrl);
+    if (preview.mediaUrl) $("mpv-loading").classList.add("hidden");
     mpvDuration = preview.duration;
     trimEnd = mpvDuration;
     updateTimeline();
@@ -902,7 +906,7 @@ async function openEmbeddedRecording({ filePath, name, mode }) {
       mpvPaused = false;
       updatePlayhead();
     } else {
-      $("editor-status").textContent = "Drag either edge to choose the part you want to keep. MPV is reading the original file.";
+      $("editor-status").textContent = "Drag either edge to choose the part you want to keep. The original file is being previewed.";
     }
     clearInterval(mpvPollTimer);
     mpvPollTimer = setInterval(refreshMpvStatus, 150);
@@ -1091,6 +1095,7 @@ window.clips.onMpvFrame(frame => {
   $("mpv-loading").classList.add("hidden");
 });
 $("mpv-canvas").addEventListener("click", togglePlayback);
+$("browser-video").addEventListener("click", togglePlayback);
 const toggleFavorite = async (event) => {
   const button = event.target.closest("[data-favorite-path]");
   if (!button || button.disabled) return;
@@ -1222,6 +1227,7 @@ $("editor").addEventListener("close", () => {
   $("export-trim").textContent = "Export trimmed clip";
   $("export-progress").classList.add("hidden");
   $("mpv-loading").classList.remove("hidden");
+  $("mpv-stage").classList.remove("browser-playback");
   $("editor").classList.remove("viewer-mode", "editing-mode", "mixer-mode", "trim-mode");
   $("mixer-progress").classList.add("hidden");
   $("mixer-progress").querySelector("i").style.width = "0%";
