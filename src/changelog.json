@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-7d05106f",
     "title": "AMD encoding and safer diagnostics",
     "changes": [
       "Restored AMD AMF hardware encoder detection by including the helper OBS requires before registering AMD encoders.",
