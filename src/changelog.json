@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-7df28457",
     "title": "Clear update-ready state",
     "changes": [
       "The Check now button stays disabled after an update finishes downloading and changes to Update ready, preventing redundant update checks while the restart action is available."
