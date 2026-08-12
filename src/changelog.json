@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-8211cc88",
     "title": "Browser UI connection fixed",
     "changes": [
       "The experimental browser interface now opens from Clips on a private localhost page, avoiding browser security rules that blocked clips.jss.fi from reaching the installed app.",
