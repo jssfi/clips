@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Clearer loading and reliable fullscreen",
+    "changes": [
+      "Browser playback now shows a centered spinner while a recording starts, seeks, or buffers.",
+      "Entering browser fullscreen keeps the current clip alive, provides fullscreen playback controls, and restores the same player session when fullscreen closes."
+    ]
+  },
+  {
     "version": "0.4-4ae40461",
     "title": "Withdrawn updates cannot restart",
     "changes": [

@@ -1010,8 +1010,8 @@ $("viewer-volume").addEventListener("input", event => {
   window.clips.setMpvVolume(Number(event.target.value)).catch(() => {});
 });
 $("viewer-fullscreen").onclick = async () => {
-  await window.clips.openMpvFullscreen(editingPath);
-  $("editor").close();
+  const fullscreen = await window.clips.openMpvFullscreen(editingPath);
+  if (!fullscreen?.inPage) $("editor").close();
 };
 function updateFullscreenButton() {
   $("viewer-fullscreen").innerHTML = playerIcons.fullscreen;

@@ -212,6 +212,8 @@
   };
   async function startBrowserPlayback(filePath) {
     if (!gatewayConnected) return desktopOnly('Video playback');
+    const loading = document.getElementById('mpv-loading');
+    loading?.classList.remove('hidden');
     browserMediaPath = filePath;
     browserMediaOffset = 0;
     const media = await rpc('getRecordingMedia', [filePath, 0]);
@@ -222,8 +224,8 @@
     video.src = mediaUrl;
     video.load();
     await new Promise((resolve, reject) => {
-      if (video.readyState >= 1) { resolve(); return; }
-      video.addEventListener('loadedmetadata', resolve, { once: true });
+      if (video.readyState >= 3) { resolve(); return; }
+      video.addEventListener('canplay', resolve, { once: true });
       video.addEventListener('error', () => reject(new Error('The browser could not play this recording.')), { once: true });
     });
     return { duration: browserMediaDuration || video.duration || 0, mediaUrl };
@@ -232,6 +234,7 @@
     const video = browserVideo();
     if (!video || !browserMediaPath) return false;
     browserMediaOffset = Math.max(0, Math.min(browserMediaDuration, Number(seconds) || 0));
+    document.getElementById('mpv-loading')?.classList.remove('hidden');
     clearTimeout(browserSeekTimer);
     browserSeekTimer = setTimeout(async () => {
       const wasPaused = video.paused;
@@ -273,7 +276,13 @@
     setMpvVolume: async volume => { if (browserVideo()) browserVideo().volume = Math.max(0, Math.min(1, Number(volume) / 100)); return true; },
     setMpvAudioMix: async () => true,
     closeMpv: async () => { clearTimeout(browserSeekTimer); browserMediaPath = ''; browserMediaOffset = 0; browserMediaDuration = 0; const video = browserVideo(); if (video) { video.pause(); video.removeAttribute('src'); video.load(); } return true; },
-    openMpvFullscreen: async () => { await browserVideo()?.requestFullscreen(); return true; },
+    openMpvFullscreen: async () => {
+      const video = browserVideo();
+      if (!video) return { inPage: true };
+      video.controls = true;
+      await video.requestFullscreen();
+      return { inPage: true };
+    },
     listMicrophones: use('listMicrophones', async () => []),
     microphoneLevel: use('microphoneLevel', async () => -60),
     setModalAppearance: async () => true,
@@ -300,5 +309,16 @@
       banner = document.querySelector('.web-demo-banner');
       updateBanner();
     }
+    const video = browserVideo();
+    const showLoading = () => document.getElementById('mpv-loading')?.classList.remove('hidden');
+    const hideLoading = () => document.getElementById('mpv-loading')?.classList.add('hidden');
+    video?.addEventListener('loadstart', showLoading);
+    video?.addEventListener('waiting', showLoading);
+    video?.addEventListener('seeking', showLoading);
+    video?.addEventListener('canplay', hideLoading);
+    video?.addEventListener('playing', hideLoading);
+    document.addEventListener('fullscreenchange', () => {
+      if (video) video.controls = document.fullscreenElement === video;
+    });
   });
 })();

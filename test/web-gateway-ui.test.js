@@ -30,6 +30,16 @@ test('shared player supports browser video without removing native canvas playba
   assert.match(html, /id="mpv-canvas"/);
   assert.match(html, /id="browser-video"/);
   assert.match(renderer, /classList\.toggle\("browser-playback", !!preview\.mediaUrl\)/);
+  assert.match(html, /id="mpv-loading"[^>]*>[\s\S]*?<i aria-hidden="true"><\/i>/);
+  assert.match(renderer, /if \(!fullscreen\?\.inPage\) \$\("editor"\)\.close\(\)/);
+});
+
+test('browser fullscreen keeps the current clip and exposes native controls', () => {
+  const web = source('clips-worker/src/web.js');
+  assert.match(web, /video\.controls = true/);
+  assert.match(web, /await video\.requestFullscreen\(\)/);
+  assert.match(web, /return \{ inPage: true \}/);
+  assert.match(web, /addEventListener\('fullscreenchange'/);
 });
 
 test('browser media disconnects handle normal broken pipes', () => {
