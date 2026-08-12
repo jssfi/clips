@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-abf9d17a",
     "title": "Faster update downloads",
     "changes": [
       "Updates now use several verified download streams at once, allowing fast internet connections to finish downloading much sooner while retaining compatibility with older servers."
