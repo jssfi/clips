@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const RUNTIME_VERSION = 3;
+const RUNTIME_VERSION = 2;
 const LIBOBS_BIN_FILES = [
   'obs.dll',
   'libobs-d3d11.dll',
@@ -41,7 +41,6 @@ const REQUIRED_FILES = [
   path.join('libobs', 'obs-plugins', '64bit', 'win-capture.dll'),
   path.join('libobs', 'obs-plugins', '64bit', 'win-wasapi.dll'),
   path.join('libobs', 'obs-plugins', '64bit', 'obs-ffmpeg.dll'),
-  path.join('libobs', 'bin', '64bit', 'obs-amf-test.exe'),
   path.join('ffmpeg', 'ffmpeg.exe'),
   path.join('libmpv', 'mpv-host.exe'),
   path.join('libmpv', 'libmpv-2.dll')
@@ -181,6 +180,16 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
   if (fs.existsSync(bundledCaptureHost)) {
     await fs.promises.mkdir(path.dirname(installedCaptureHost), { recursive: true });
     await copyFileWithRetries(bundledCaptureHost, installedCaptureHost);
+    installed = true;
+  }
+
+  // OBS probes AMD AMF in a helper process before registering its hardware
+  // encoders. Older v2 runtimes omitted this helper, so add it in place.
+  const bundledAmfProbe = path.join(resourcesPath, 'encoder-probes', 'obs-amf-test.exe');
+  if (fs.existsSync(bundledAmfProbe)) {
+    const installedAmfProbe = path.join(root, 'libobs', 'bin', '64bit', 'obs-amf-test.exe');
+    await fs.promises.mkdir(path.dirname(installedAmfProbe), { recursive: true });
+    await copyFileWithRetries(bundledAmfProbe, installedAmfProbe);
     installed = true;
   }
 

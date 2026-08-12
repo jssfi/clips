@@ -27,6 +27,9 @@ test('a slim update refreshes native hosts in an otherwise-ready runtime', async
   const bundledHost = path.join(resources, 'capture-host', 'clips-capture-host.exe');
   await fs.promises.mkdir(path.dirname(bundledHost), { recursive: true });
   await fs.promises.writeFile(bundledHost, 'updated capture host');
+  const bundledAmfProbe = path.join(resources, 'encoder-probes', 'obs-amf-test.exe');
+  await fs.promises.mkdir(path.dirname(bundledAmfProbe), { recursive: true });
+  await fs.promises.writeFile(bundledAmfProbe, 'updated amf probe');
   const bundledFilters = path.join(resources, 'microphone-filters', 'obs-filters.dll');
   await fs.promises.mkdir(path.dirname(bundledFilters), { recursive: true });
   await fs.promises.writeFile(bundledFilters, 'updated microphone filters');
@@ -44,6 +47,10 @@ test('a slim update refreshes native hosts in an otherwise-ready runtime', async
       'utf8'
     ),
     'updated capture host'
+  );
+  assert.equal(
+    await fs.promises.readFile(path.join(runtime, 'libobs', 'bin', '64bit', 'obs-amf-test.exe'), 'utf8'),
+    'updated amf probe'
   );
   assert.equal(
     await fs.promises.readFile(path.join(runtime, 'libmpv', 'mpv-host.exe'), 'utf8'),

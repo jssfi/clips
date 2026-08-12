@@ -22,6 +22,10 @@
       "to": "capture-host/clips-capture-host.exe"
     },
     {
+      "from": "vendor/libobs/bin/64bit/obs-amf-test.exe",
+      "to": "encoder-probes/obs-amf-test.exe"
+    },
+    {
       "from": "vendor/libobs/obs-plugins/64bit/obs-filters.dll",
       "to": "microphone-filters/obs-filters.dll"
     },

@@ -1,9 +1,16 @@
 [
   {
+    "version": "next",
+    "title": "AMD fix for existing installations",
+    "changes": [
+      "AMD hardware encoder support now installs directly into existing capture runtimes as well as fresh installations."
+    ]
+  },
+  {
     "version": "0.4-7d05106f",
     "title": "AMD encoding and safer diagnostics",
     "changes": [
-      "Restored AMD AMF hardware encoder detection by including the helper OBS requires before registering AMD encoders.",
+      "Restored AMD AMF hardware encoder detection by adding the helper OBS requires to both existing and fresh capture runtimes.",
       "Local diagnostic logs now redact Windows usernames, capture-device identifiers, and window titles.",
       "Stopped high-frequency microphone meter polling from flooding diagnostic logs."
     ]
