@@ -1,5 +1,14 @@
 [
   {
+    "version": "next",
+    "title": "Cleaner markers and library controls",
+    "changes": [
+      "Timeline markers are now a shortcut-only feature with a clear setting to disable them, while keeping the in-game saved confirmation.",
+      "Search and sorting now appear in the Library instead of today's Recent view, with readable native dropdown colors.",
+      "New replays, trims, compilations, and desktop captures retain their game identity; older footage is clearly labeled when its game cannot be recovered."
+    ]
+  },
+  {
     "version": "0.4-721a8d0c",
     "title": "From recording to finished highlight",
     "changes": [
