@@ -131,6 +131,7 @@ const values = () => ({
   microphoneNvidiaNoiseRemoval: $("microphone-nvidia-noise-removal").checked,
   audioExecutables: state.settings.audioExecutables,
   gameExecutables: state.settings.gameExecutables,
+  gameProfiles: state.settings.gameProfiles || {},
   trimBitrate: $("trim-bitrate").value,
   nightlyUpdates: $("nightly-updates").checked,
   telemetryMode: $("telemetry-mode").value,
@@ -197,6 +198,10 @@ function render(s, fill = false) {
         )
         .join("")
     : '<div class="muted">No games added. Add a running game to begin.</div>';
+  $("game-profiles").innerHTML = s.settings.gameExecutables.length ? s.settings.gameExecutables.map(game => {
+    const key = game.toLowerCase(); const profile = s.settings.gameProfiles?.[key] || {};
+    return `<div class="settings-row game-profile" data-profile-game="${escapeHtml(key)}"><span><strong>${escapeHtml(game)}</strong><small>Blank values use the global capture profile.</small></span><span class="profile-controls"><select data-profile="quality"><option value="">Default quality</option><option value="HQ"${profile.quality === "HQ" ? " selected" : ""}>High</option><option value="Small"${profile.quality === "Small" ? " selected" : ""}>Small</option></select><select data-profile="resolution"><option value="">Default resolution</option><option value="2560x1440"${profile.resolution === "2560x1440" ? " selected" : ""}>1440p</option><option value="1920x1080"${profile.resolution === "1920x1080" ? " selected" : ""}>1080p</option><option value="1280x720"${profile.resolution === "1280x720" ? " selected" : ""}>720p</option></select><select data-profile="fps"><option value="0">Default FPS</option><option value="60"${profile.fps === 60 ? " selected" : ""}>60 FPS</option><option value="30"${profile.fps === 30 ? " selected" : ""}>30 FPS</option></select><input data-profile="clipLengthSeconds" type="number" min="5" max="3600" placeholder="Default seconds" value="${profile.clipLengthSeconds || ""}"></span></div>`;
+  }).join("") : '<div class="settings-row"><span class="muted">Add a monitored game to create a profile.</span></div>';
   $("audio-application-list").innerHTML = s.settings.audioExecutables.length
     ? s.settings.audioExecutables
         .map(
@@ -614,6 +619,12 @@ $("settings").addEventListener("input", (event) => {
   if (event.target.matches("input:not([readonly]), select, textarea")) queueAutoSave();
 });
 $("settings").addEventListener("change", (event) => {
+  const profileControl = event.target.closest("[data-profile]");
+  if (profileControl) {
+    const game = profileControl.closest("[data-profile-game]").dataset.profileGame;
+    const profile = state.settings.gameProfiles[game] ||= {};
+    profile[profileControl.dataset.profile] = profileControl.type === "number" || profileControl.dataset.profile === "fps" ? Number(profileControl.value) : profileControl.value;
+  }
   if (event.target.matches("input:not([readonly]), select, textarea")) queueAutoSave(0);
 });
 $("connect").onclick = async () => {
