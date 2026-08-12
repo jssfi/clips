@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-721a8d0c",
     "title": "From recording to finished highlight",
     "changes": [
       "Added timeline markers with a dedicated shortcut so memorable moments can be flagged without creating extra replay files.",
