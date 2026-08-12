@@ -1000,7 +1000,7 @@ function showMainWindow() {
   win.focus();
 }
 function webAppLaunchUrl() {
-  const url = new URL(WEB_APP_URL);
+  const url = new URL(`http://127.0.0.1:${DEFAULT_GATEWAY_PORT}/app/`);
   url.hash = new URLSearchParams({ gateway: gatewayToken, port: String(DEFAULT_GATEWAY_PORT) }).toString();
   return url.toString();
 }
@@ -1521,8 +1521,17 @@ app.whenReady().then(async () => {
     logger,
     allowedOrigins: [
       new URL(WEB_APP_URL).origin,
+      `http://127.0.0.1:${DEFAULT_GATEWAY_PORT}`,
       ...(!app.isPackaged ? ['http://127.0.0.1:8787', 'http://localhost:8787'] : [])
     ],
+    webAssets: {
+      index: path.join(__dirname, 'index.html'),
+      styles: path.join(__dirname, 'styles.css'),
+      renderer: path.join(__dirname, 'renderer.js'),
+      changelog: path.join(__dirname, 'changelog.json'),
+      web: path.join(__dirname, '..', 'clips-worker', 'src', 'web.js'),
+      webCss: path.join(__dirname, '..', 'clips-worker', 'src', 'web.css')
+    },
     approvePairing: async ({ origin, clientName }) => {
       const options = {
         type: 'question',

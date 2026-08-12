@@ -45,6 +45,8 @@
     "productName": "jss clips",
     "files": [
       "src/**/*",
+      "clips-worker/src/web.js",
+      "clips-worker/src/web.css",
       "assets/**/*",
       "package.json"
     ],

@@ -1,5 +1,6 @@
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const DEFAULT_GATEWAY_PORT = 32191;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -44,7 +45,8 @@ function createGateway({
   approvePairing,
   logger,
   allowedOrigins = ['https://clips.jss.fi'],
-  port = DEFAULT_GATEWAY_PORT
+  port = DEFAULT_GATEWAY_PORT,
+  webAssets = null
 }) {
   const origins = new Set(allowedOrigins);
   const eventClients = new Set();
@@ -67,6 +69,39 @@ function createGateway({
   }
 
   async function handle(request, response) {
+    const url = new URL(request.url, `http://127.0.0.1:${port}`);
+    if (request.method === 'GET' && webAssets) {
+      if (url.pathname === '/' || url.pathname === '/app') {
+        response.writeHead(302, { Location: '/app/', 'Cache-Control': 'no-store' });
+        response.end();
+        return;
+      }
+      const asset = {
+        '/app/': ['index', 'text/html; charset=utf-8'],
+        '/app/styles.css': ['styles', 'text/css; charset=utf-8'],
+        '/app/renderer.js': ['renderer', 'text/javascript; charset=utf-8'],
+        '/app/web.js': ['web', 'text/javascript; charset=utf-8'],
+        '/app/web.css': ['webCss', 'text/css; charset=utf-8'],
+        '/app/changelog.json': ['changelog', 'application/json; charset=utf-8']
+      }[url.pathname];
+      if (asset) {
+        let body = await fs.promises.readFile(webAssets[asset[0]]);
+        if (asset[0] === 'index') {
+          body = Buffer.from(body.toString('utf8').replace(
+            '<script src="renderer.js"></script>',
+            '<script src="web.js"></script>\n  <script src="renderer.js"></script>'
+          ));
+        }
+        response.writeHead(200, {
+          'Cache-Control': 'no-store',
+          'Content-Type': asset[1],
+          'Content-Length': body.length,
+          'X-Content-Type-Options': 'nosniff'
+        });
+        response.end(body);
+        return;
+      }
+    }
     const origin = allowedOrigin(request);
     if (!origin) {
       json(response, 403, { error: 'This website is not allowed to control Clips.' });
@@ -85,7 +120,6 @@ function createGateway({
       return;
     }
 
-    const url = new URL(request.url, `http://127.0.0.1:${port}`);
     if (request.method === 'GET' && url.pathname === '/v1/health') {
       json(response, 200, { product: 'jss/clips', apiVersion: 1, pairingRequired: true }, origin);
       return;

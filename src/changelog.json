@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Browser UI connection fixed",
+    "changes": [
+      "The experimental browser interface now opens from Clips on a private localhost page, avoiding browser security rules that blocked clips.jss.fi from reaching the installed app.",
+      "Connect Clips on the web demo now hands off to the working local browser interface, where recordings and controls stay on this computer."
+    ]
+  },
+  {
     "version": "0.4-6d53559b",
     "title": "Use Clips from the web",
     "changes": [

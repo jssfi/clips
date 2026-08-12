@@ -144,6 +144,10 @@
     }
   }
   async function pairGateway() {
+    if (location.protocol === 'https:') {
+      location.assign(`http://127.0.0.1:${gatewayPort}/app/`);
+      return;
+    }
     updateBanner('Looking for Clips…');
     try {
       const health = await responseJson(await localFetch(`${gatewayBase()}/health`));
