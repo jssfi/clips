@@ -12,6 +12,7 @@ const {
   isVersionDirectory,
   validateMetadata,
   authenticateMetadata,
+  preparedUpdateMatches,
   downloadRanges,
   downloadUpdateArchive,
   updateRelaunchArgs
@@ -118,6 +119,14 @@ test('authenticateMetadata accepts only metadata signed by the trusted key', () 
   assert.equal(authenticateMetadata(metadata, publicKey).version, '0.1.12');
   assert.throws(() => authenticateMetadata({ ...metadata, size: 124 }, publicKey), /signature/i);
   assert.throws(() => authenticateMetadata({ ...metadata, signature: '' }, publicKey), /signature/i);
+});
+
+test('restart confirmation requires the exact prepared update metadata', () => {
+  const prepared = { version: '0.1.12', url: 'jss-clips-app-0.1.12-x64.zip', sha512: 'one', size: 123 };
+  assert.equal(preparedUpdateMatches(prepared, { ...prepared }), true);
+  assert.equal(preparedUpdateMatches(prepared, { ...prepared, version: '0.1.13' }), false);
+  assert.equal(preparedUpdateMatches(prepared, { ...prepared, sha512: 'two' }), false);
+  assert.equal(preparedUpdateMatches(prepared, { ...prepared, size: 124 }), false);
 });
 
 test('downloadRanges splits large updates into complete non-overlapping parts', () => {

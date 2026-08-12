@@ -1310,13 +1310,14 @@ async function installUpdate() {
     app.exit(0);
     return true;
   }
-  const capture = await obs.status();
-  if (capture.recording || capture.replayBuffer) {
-    await obs.stopSession().catch(error => logger.warn('capture stop before update failed', { message: error.message }));
-    sessionDate = '';
-  }
-  await obs.disconnect().catch(error => logger.warn('capture shutdown before update failed', { message: error.message }));
-  return stagedUpdater?.restart() || false;
+  return stagedUpdater?.restart(async () => {
+    const capture = await obs.status();
+    if (capture.recording || capture.replayBuffer) {
+      await obs.stopSession().catch(error => logger.warn('capture stop before update failed', { message: error.message }));
+      sessionDate = '';
+    }
+    await obs.disconnect().catch(error => logger.warn('capture shutdown before update failed', { message: error.message }));
+  }) || false;
 }
 
 function checkForUpdates() {

@@ -142,6 +142,10 @@ function render(s, fill = false) {
   state = s;
   const updateReady = s.update?.status === "ready";
   $("update-button").classList.toggle("hidden", !updateReady);
+  if (!updateReady) {
+    $("update-button").disabled = false;
+    $("update-button").classList.remove("restarting");
+  }
   if (updateReady) {
     const label = `Restart to install Clips ${s.update.version}`;
     $("update-button").setAttribute("aria-label", label);
@@ -160,6 +164,7 @@ function render(s, fill = false) {
     preparing: s.update?.message || `Preparing ${s.update?.version || "update"}…`,
     ready: `${s.update?.version || "Update"} is downloaded and ready to restart.`,
     error: s.update?.message || "The update check failed.",
+    withdrawn: s.update?.message || "This update was withdrawn and will not be installed.",
     idle: s.update?.configured ? "You’re up to date." : "Nightly updates are off.",
   };
   $("about-update-status").textContent = updateStatus[s.update?.status] || updateStatus.idle;

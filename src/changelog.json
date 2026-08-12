@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Withdrawn updates cannot restart",
+    "changes": [
+      "Restart to update now re-downloads and authenticates the current update metadata before stopping capture or relaunching, preventing a prepared build from installing after it has been withdrawn or replaced.",
+      "When an update was replaced, Clips downloads the current replacement; when it was pulled entirely, Clips reports that it was withdrawn and leaves the app running."
+    ]
+  },
+  {
     "version": "0.4-d5159ce0",
     "title": "Startup disk activity fixed",
     "changes": [

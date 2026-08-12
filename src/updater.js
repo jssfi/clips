@@ -348,9 +348,18 @@ function authenticateMetadata(value, publicKey = UPDATE_PUBLIC_KEY) {
   return validateMetadata(value);
 }
 
+function preparedUpdateMatches(prepared, metadata) {
+  return Boolean(prepared && metadata
+    && prepared.version === metadata.version
+    && prepared.url === metadata.url
+    && prepared.sha512 === metadata.sha512
+    && prepared.size === metadata.size);
+}
+
 function createStagedUpdater({ app, feedUrl, onState }) {
   let operation = null;
   let readyUpdate = null;
+  let readyMetadata = null;
 
   const emit = next => onState(next);
   const sevenZip = () => path.join(process.resourcesPath, 'tools', '7za.exe');
@@ -416,11 +425,13 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     const metadata = authenticateMetadata(await response.json());
     if (compareVersions(metadata.version, app.getVersion()) <= 0) {
       readyUpdate = null;
+      readyMetadata = null;
       emit({ status: 'idle', version: app.getVersion(), percent: 0, message: '' });
       return false;
     }
     readyUpdate = await findPreparedUpdate(app, metadata);
     if (!readyUpdate) readyUpdate = await download(metadata);
+    readyMetadata = metadata;
     emit({ status: 'ready', version: metadata.version, percent: 100, message: 'Restart to update' });
     return true;
   }
@@ -436,8 +447,32 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     return operation;
   }
 
-  async function restart() {
+  async function restart(beforeRestart = async () => {}) {
     if (!readyUpdate || !fs.existsSync(readyUpdate.executable)) return false;
+    let currentMetadata;
+    try {
+      const response = await fetch(`${feedUrl}/latest.json`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Update confirmation failed (${response.status}).`);
+      currentMetadata = authenticateMetadata(await response.json());
+    } catch (error) {
+      emit({ status: 'error', percent: 0, message: `Could not confirm this update is still available: ${error?.message || error}` });
+      return false;
+    }
+    if (!preparedUpdateMatches(readyMetadata, currentMetadata)) {
+      readyUpdate = null;
+      readyMetadata = null;
+      if (compareVersions(currentMetadata.version, app.getVersion()) > 0) {
+        emit({ status: 'checking', version: currentMetadata.version, percent: 0, message: 'The previous update was withdrawn. Getting the replacementâ€¦' });
+        operation = performCheck().finally(() => { operation = null; });
+        await operation.catch(error => {
+          emit({ status: 'error', percent: 0, message: error?.message || String(error) });
+        });
+      } else {
+        emit({ status: 'withdrawn', version: app.getVersion(), percent: 0, message: 'This update was withdrawn and will not be installed.' });
+      }
+      return false;
+    }
+    await beforeRestart();
     const pointer = activeVersionPath(app);
     await fs.promises.mkdir(path.dirname(pointer), { recursive: true });
     await fs.promises.writeFile(pointer, `${JSON.stringify({
@@ -461,6 +496,7 @@ module.exports = {
   isVersionDirectory,
   validateMetadata,
   authenticateMetadata,
+  preparedUpdateMatches,
   downloadRanges,
   downloadUpdateArchive,
   updateRelaunchArgs,
