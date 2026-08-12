@@ -161,7 +161,10 @@ function render(s, fill = false) {
     idle: s.update?.configured ? "You’re up to date." : "Nightly updates are off.",
   };
   $("about-update-status").textContent = updateStatus[s.update?.status] || updateStatus.idle;
-  $("check-updates").disabled = ["checking", "downloading", "preparing"].includes(s.update?.status);
+  const checkButton = $("check-updates");
+  const updateBusyOrReady = ["checking", "downloading", "preparing", "ready"].includes(s.update?.status);
+  checkButton.disabled = updateBusyOrReady;
+  checkButton.textContent = ({ checking: "Checking…", downloading: "Downloading…", preparing: "Preparing…", ready: "Update ready" })[s.update?.status] || "Check now";
   $("telemetry-mode").disabled = !s.telemetry?.configured;
   $("telemetry-status").textContent = s.telemetry?.configured
     ? "The choice applies immediately and can be changed at any time."

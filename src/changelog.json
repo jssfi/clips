@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Clear update-ready state",
+    "changes": [
+      "The Check now button stays disabled after an update finishes downloading and changes to Update ready, preventing redundant update checks while the restart action is available."
+    ]
+  },
+  {
     "version": "0.4-f1a3a330",
     "title": "Cleaner markers and library controls",
     "changes": [

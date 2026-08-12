@@ -1265,7 +1265,7 @@ ipcMain.handle('update:install', async () => {
   return stagedUpdater?.restart() || false;
 });
 ipcMain.handle('update:check', () => {
-  if (!app.isPackaged || !updateFeedUrl()) return false;
+  if (!app.isPackaged || !updateFeedUrl() || ['checking', 'downloading', 'preparing', 'ready'].includes(updateState.status)) return false;
   stagedUpdater?.check();
   return true;
 });
