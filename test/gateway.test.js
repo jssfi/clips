@@ -34,7 +34,7 @@ test('gateway only accepts the configured website origin', async () => withGatew
   assert.deepEqual(await allowed.json(), { product: 'jss/clips', apiVersion: 1, pairingRequired: true });
 }));
 
-test('gateway accepts same-origin loopback requests that omit Origin', async () => withGateway(async ({ port }) => {
+test('gateway accepts same-origin loopback requests that omit Origin', async () => withGateway(async ({ gateway, port }) => {
   const response = await fetch(`http://127.0.0.1:${port}/v1/health`);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('access-control-allow-origin'), `http://127.0.0.1:${port}`);
@@ -43,6 +43,7 @@ test('gateway accepts same-origin loopback requests that omit Origin', async () 
   assert.equal(events.status, 200);
   const reader = events.body.getReader();
   assert.match(await reader.read().then(chunk => new TextDecoder().decode(chunk.value)), /connected/);
+  assert.equal(gateway.hasEventClients(), true);
   await reader.cancel();
 }));
 

@@ -205,6 +205,8 @@ function createGateway({
     }
   }
 
+  function hasEventClients() { return eventClients.size > 0; }
+
   function close() {
     for (const response of eventClients) response.end();
     eventClients.clear();
@@ -212,7 +214,7 @@ function createGateway({
     server = null;
   }
 
-  return { start, emit, close, port };
+  return { start, emit, hasEventClients, close, port };
 }
 
 module.exports = { createGateway, DEFAULT_GATEWAY_PORT };

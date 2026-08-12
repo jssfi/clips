@@ -120,6 +120,10 @@
     });
     events.addEventListener('trim-progress', event => callbacks.trim.forEach(callback => callback(JSON.parse(event.data))));
     events.addEventListener('audio-mix-progress', event => callbacks.mix.forEach(callback => callback(JSON.parse(event.data))));
+    events.addEventListener('activate-ui', () => {
+      window.focus();
+      document.documentElement.scrollIntoView({ block: 'start' });
+    });
     events.addEventListener('open', () => setConnected(true));
     events.addEventListener('error', () => {
       events?.close();

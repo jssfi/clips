@@ -83,6 +83,7 @@ let sessionStartedAt = 0;
 let sessionMarkers = [];
 let sessionGame = '';
 let lastCaptureWarningTime = 0;
+let captureWarningWindow = { startedAt: 0, renderingLag: 0, encoderDrops: 0 };
 let lastProblemOverlay = { message: '', time: 0 };
 const obs = new ObsController(() => broadcast(), logger);
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -926,7 +927,11 @@ async function monitor() {
   scheduleNextMonitor();
 }
 function inspectCaptureHealth(status) {
-  if (!status.recording) { previousCaptureHealth = null; return; }
+  if (!status.recording) {
+    previousCaptureHealth = null;
+    captureWarningWindow = { startedAt: 0, renderingLag: 0, encoderDrops: 0 };
+    return;
+  }
   const current = {
     rendered: Number(status.renderedFrames) || 0,
     lagged: Number(status.laggedFrames) || 0,
@@ -940,15 +945,26 @@ function inspectCaptureHealth(status) {
   const encoderDrops = Math.max(0, current.dropped - previous.dropped);
   if (!renderingLag && !encoderDrops) return;
   const now = Date.now();
+  if (!captureWarningWindow.startedAt || now - captureWarningWindow.startedAt > 60000) {
+    captureWarningWindow = { startedAt: now, renderingLag: 0, encoderDrops: 0 };
+  }
+  captureWarningWindow.renderingLag += renderingLag;
+  captureWarningWindow.encoderDrops += encoderDrops;
+  const noticeableBurst = renderingLag >= 6 || encoderDrops >= 3;
+  const noticeableSustainedLoss = captureWarningWindow.renderingLag >= 12 || captureWarningWindow.encoderDrops >= 6;
+  logger.warn('capture frame drops detected', { renderingLag, encoderDrops, warning: noticeableBurst || noticeableSustainedLoss });
+  if (!noticeableBurst && !noticeableSustainedLoss) return;
   if (now - lastCaptureWarningTime < 60000) return;
   lastCaptureWarningTime = now;
-  const frames = renderingLag + encoderDrops;
-  const detail = renderingLag && encoderDrops
+  const windowRenderingLag = captureWarningWindow.renderingLag;
+  const windowEncoderDrops = captureWarningWindow.encoderDrops;
+  captureWarningWindow = { startedAt: now, renderingLag: 0, encoderDrops: 0 };
+  const frames = windowRenderingLag + windowEncoderDrops;
+  const detail = windowRenderingLag && windowEncoderDrops
     ? 'The GPU and video encoder could not keep up. Try lowering resolution, quality, or FPS.'
-    : renderingLag
+    : windowRenderingLag
       ? 'The GPU could not render in time. Close GPU-heavy apps or lower resolution/FPS.'
       : 'The video encoder could not keep up. Try lowering quality, resolution, or FPS.';
-  logger.warn('capture frame drops detected', { renderingLag, encoderDrops });
   displayOverlayToast({ message: `${frames} recording frame${frames === 1 ? '' : 's'} dropped`, detail, kind: 'warning' });
 }
 function setError(error) {
@@ -1068,6 +1084,10 @@ function openWebUi() {
   if (!gatewayReady) {
     showMainWindow();
     return Promise.resolve(false);
+  }
+  if (gateway?.hasEventClients()) {
+    gateway.emit('activate-ui', { requestedAt: Date.now() });
+    return Promise.resolve(true);
   }
   return shell.openExternal(webAppLaunchUrl()).catch(error => {
     logger.warn('could not open browser UI', { message: error.message });

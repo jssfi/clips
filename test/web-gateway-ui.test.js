@@ -55,3 +55,19 @@ test('live settings synchronization does not rediscover microphones on every ren
   assert.doesNotMatch(renderBody, /refreshMicrophones/);
   assert.match(renderer, /JSON\.stringify\(s\.settings\) !== renderedSettingsJson/);
 });
+
+test('opening the browser UI reuses a connected tab', () => {
+  const main = source('src/main.js');
+  const web = source('clips-worker/src/web.js');
+  assert.match(main, /gateway\?\.hasEventClients\(\)/);
+  assert.match(main, /gateway\.emit\('activate-ui'/);
+  assert.match(web, /addEventListener\('activate-ui'/);
+  assert.match(web, /window\.focus\(\)/);
+});
+
+test('isolated frame misses stay in diagnostics without showing an overlay', () => {
+  const main = source('src/main.js');
+  assert.match(main, /renderingLag >= 6 \|\| encoderDrops >= 3/);
+  assert.match(main, /captureWarningWindow\.renderingLag >= 12 \|\| captureWarningWindow\.encoderDrops >= 6/);
+  assert.match(main, /if \(!noticeableBurst && !noticeableSustainedLoss\) return/);
+});
