@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-8f0c8516",
     "title": "Fast, responsive browser playback",
     "changes": [
       "Opening a recording in the browser now starts a paced stream instead of copying the entire file first, keeping recording controls, update checks, disk usage, and the rest of the computer responsive even with very large sessions.",
