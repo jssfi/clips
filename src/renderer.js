@@ -390,6 +390,7 @@ function navigateToPage(page) {
   $("settings-button").classList.toggle("hidden", page === "settings");
   $("settings-back").classList.toggle("hidden", page !== "settings");
   $("workspace").classList.toggle("settings-open", page === "settings");
+  if (page === "recent" || page === "library") requestAnimationFrame(loadRecordingThumbnails);
 }
 document.querySelectorAll(".nav-main").forEach((button) => {
   button.onclick = () => navigateToPage(button.dataset.page);
@@ -1248,10 +1249,10 @@ const archiveDays = $("archive-days");
 archiveDays.addEventListener("click", openRecording);
 $("recent-favorite-list").onclick = openRecording;
 $("archive-favorite-list").onclick = openRecording;
-window.clips.onState((s) => render(s));
+window.clips.onState((s) => render(s, !document.activeElement?.closest?.("#settings")));
 window.clips.getState().then((s) => render(s, true));
 // Main-process state events keep the UI current. Only recover state after a
 // suspended/hidden renderer becomes visible instead of polling while in tray.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') window.clips.getState().then(render);
+  if (document.visibilityState === 'visible') window.clips.getState().then((s) => render(s, true));
 });

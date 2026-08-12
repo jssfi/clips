@@ -55,6 +55,10 @@ function createGateway({
 
   function allowedOrigin(request) {
     const origin = String(request.headers.origin || '');
+    const localPort = server?.address()?.port || port;
+    if (!origin && String(request.headers.host || '') === `127.0.0.1:${localPort}`) {
+      return `http://127.0.0.1:${localPort}`;
+    }
     return origins.has(origin) ? origin : '';
   }
 
@@ -104,6 +108,12 @@ function createGateway({
     }
     const origin = allowedOrigin(request);
     if (!origin) {
+      logger?.warn('web gateway rejected origin', {
+        origin: String(request.headers.origin || ''),
+        host: String(request.headers.host || ''),
+        method: request.method,
+        path: url.pathname
+      });
       json(response, 403, { error: 'This website is not allowed to control Clips.' });
       return;
     }

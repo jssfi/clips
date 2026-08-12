@@ -19,6 +19,8 @@ test('browser build connects to the restricted loopback gateway and retains demo
   assert.match(web, /targetAddressSpace: 'local'/);
   assert.match(web, /Connect Clips/);
   assert.match(web, /location\.assign\(`http:\/\/127\.0\.0\.1:\$\{gatewayPort\}\/app\/`\)/);
+  assert.match(web, /const localUi = location\.hostname === '127\.0\.0\.1'/);
+  assert.match(web, /if \(!localUi\) \{/);
   assert.match(web, /gatewayConnected \? currentState : demoState/);
 });
 

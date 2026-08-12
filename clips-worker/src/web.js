@@ -62,6 +62,7 @@
   };
 
   const sessionKey = 'clips-gateway-session-v1';
+  const localUi = location.hostname === '127.0.0.1';
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ''));
   let gatewayToken = fragment.get('gateway') || '';
   let gatewayPort = Number(fragment.get('port')) || 32191;
@@ -102,7 +103,7 @@
   }
   function setConnected(connected) {
     gatewayConnected = connected;
-    document.title = connected ? 'Clips' : 'Clips — browser demo';
+    document.title = connected || localUi ? 'Clips' : 'Clips — browser demo';
     document.body?.classList.toggle('gateway-connected', connected);
     updateBanner();
   }
@@ -170,6 +171,11 @@
 
   function updateBanner(message = '') {
     if (!banner) return;
+    if (localUi) {
+      banner.remove();
+      banner = null;
+      return;
+    }
     if (gatewayConnected) {
       banner.innerHTML = '<span><strong>Connected</strong> — this page is controlling Clips on this computer.</span><button type="button" data-gateway-refresh>Refresh</button>';
       banner.querySelector('[data-gateway-refresh]').onclick = () => rpc('getState').then(state => {
@@ -189,9 +195,12 @@
       try { demoState.app.changelog = await fetch('changelog.json').then(response => response.json()); } catch {}
     }
     await tryGateway();
+    if (localUi && !gatewayConnected && !gatewayToken) await pairGateway();
     return clone(gatewayConnected ? currentState : demoState);
   }
-  const use = (method, fallback) => (...args) => gatewayConnected ? rpc(method, args) : fallback(...args);
+  const use = (method, fallback) => (...args) => gatewayConnected
+    ? rpc(method, args)
+    : localUi ? desktopOnly('This action') : fallback(...args);
   const setDemoFavorite = async (filePath, favorite) => {
     [...demoState.recordings, ...demoState.archivedRecordings].forEach(item => { if (item.path === filePath) item.favorite = favorite; });
     demoEmit();
@@ -262,8 +271,10 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="web.css">');
-    document.body.insertAdjacentHTML('beforeend', '<aside class="web-demo-banner" aria-live="polite"></aside>');
-    banner = document.querySelector('.web-demo-banner');
-    updateBanner();
+    if (!localUi) {
+      document.body.insertAdjacentHTML('beforeend', '<aside class="web-demo-banner" aria-live="polite"></aside>');
+      banner = document.querySelector('.web-demo-banner');
+      updateBanner();
+    }
   });
 })();

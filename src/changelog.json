@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Browser controls stay connected",
+    "changes": [
+      "The local browser interface now stays connected to Clips, so recording controls, settings, thumbnails, and playback continue using the installed app instead of falling back to demo data.",
+      "Library thumbnails load when the Library is opened, settings refresh across open interfaces, and the browser-demo banner no longer appears on the private local interface."
+    ]
+  },
+  {
     "version": "0.4-8211cc88",
     "title": "Browser UI connection fixed",
     "changes": [
