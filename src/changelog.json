@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-64de93ff",
     "title": "Opening Clips finds its browser tab",
     "changes": [
       "Double-clicking Clips or choosing Open now selects the existing Clips browser tab and brings its browser window forward instead of appearing to do nothing.",
