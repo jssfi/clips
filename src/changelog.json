@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-d30a3593",
     "title": "Never miss the last five minutes",
     "changes": [
       "Added an opt-in Instant replay while idle setting that keeps only the latest clip-length window when full recording is off, letting Save clip recover moments without filling the drive with a full session."
