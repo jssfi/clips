@@ -28,6 +28,7 @@
       markerHotkey: 'CommandOrControl+Shift+F9',
       stopDelaySeconds: 20,
       clipLengthSeconds: 60,
+      instantReplay: false,
       obsRecordingQuality: 'HQ',
       obsResolution: '1920x1080',
       obsFps: 60,

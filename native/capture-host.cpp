@@ -326,7 +326,8 @@ public:
 				throw std::runtime_error(last_output_error(replay_output_, "The replay buffer failed to start."));
 		}
 
-		if (!recording()) {
+		const bool start_recording = !obs_data_has_user_value(request, "recording") || obs_data_get_bool(request, "recording");
+		if (start_recording && !recording()) {
 			DataRef settings(obs_data_create());
 			const fs::path output_path =
 				fs::path(utf8_to_wide(directory)) / utf8_to_wide(timestamp_name("Recording", extension_));
@@ -351,6 +352,17 @@ public:
 		}
 		fprintf(stderr, "[capture-host] microphone volume set to %d%%\n", percent);
 		fflush(stderr);
+	}
+
+	void stop_recording()
+	{
+		require_initialized();
+		if (recording())
+			obs_output_stop(record_output_);
+		for (int attempt = 0; attempt < 100 && recording(); ++attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+		if (recording())
+			obs_output_force_stop(record_output_);
 	}
 
 	void set_microphone_noise_gate(obs_data_t *request)
@@ -1054,6 +1066,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				host.start(request);
 			else if (command == "stop")
 				host.stop();
+			else if (command == "stopRecording")
+				host.stop_recording();
 			else if (command == "save")
 				host.save_replay();
 			else if (command == "microphones") {

@@ -37,6 +37,15 @@ test('startSession sends the selected microphone and desktop audio to the captur
   assert.equal(request[1].applications[0].captureAudio, true);
 });
 
+test('stopRecording leaves replay-buffer lifecycle to the capture engine', async () => {
+  const controller = new ObsController();
+  controller.connected = true;
+  let request;
+  controller.request = async (...args) => { request = args; };
+  await controller.stopRecording();
+  assert.deepEqual(request, ['stopRecording', {}, 60000]);
+});
+
 test('microphone volume is sent to the running capture engine', async () => {
   const controller = new ObsController();
   controller.connected = true;

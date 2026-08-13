@@ -156,7 +156,7 @@ class ObsController {
     this.applications = applications.map(application => ({ ...application }));
   }
 
-  async startSession(outputDirectory, activeGames = [], microphoneDeviceId = 'disabled', microphoneVolumePercent = 100, microphoneNoiseGateDb = -40, microphoneNvidiaNoiseRemoval = true) {
+  async startSession(outputDirectory, activeGames = [], microphoneDeviceId = 'disabled', microphoneVolumePercent = 100, microphoneNoiseGateDb = -40, microphoneNvidiaNoiseRemoval = true, recording = true) {
     const video = new Set(activeGames.map(name => name.toLowerCase()));
     const applications = this.applications.map(application => ({
       ...application,
@@ -182,7 +182,8 @@ class ObsController {
       microphoneDeviceId,
       microphoneVolumePercent,
       microphoneNoiseGateDb,
-      microphoneNvidiaNoiseRemoval
+      microphoneNvidiaNoiseRemoval,
+      recording
     }, 45000);
   }
 
@@ -220,6 +221,11 @@ class ObsController {
   async stopSession() {
     if (!this.connected) return;
     await this.request('stop', {}, 60000);
+  }
+
+  async stopRecording() {
+    if (!this.connected) return;
+    await this.request('stopRecording', {}, 60000);
   }
 
   async saveClip() {

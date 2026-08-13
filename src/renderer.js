@@ -117,6 +117,7 @@ const values = () => ({
   maxDiskUsagePercent: Number($("disk-percent").value),
   maxRawRecordingGigabytes: Number($("raw-gigabytes").value),
   clipLengthSeconds: Number($("clip-length").value),
+  instantReplay: $("instant-replay").checked,
   clipHotkey: $("hotkey").dataset.accelerator ?? "",
   markerHotkey: $("marker-hotkey").dataset.accelerator ?? "",
   stopDelaySeconds: Number($("delay").value),
@@ -186,6 +187,8 @@ function render(s, fill = false) {
     : "Start recording";
   $("status").textContent = s.obs.recording
     ? "Recording"
+    : s.obs.replayBuffer
+      ? "Instant replay ready"
     : s.activeGames.length
       ? "Game detected"
       : "Waiting for a game";
@@ -303,6 +306,7 @@ function render(s, fill = false) {
     $("disk-percent").value = s.settings.maxDiskUsagePercent;
     $("raw-gigabytes").value = s.settings.maxRawRecordingGigabytes;
     $("clip-length").value = s.settings.clipLengthSeconds;
+    $("instant-replay").checked = !!s.settings.instantReplay;
     $("hotkey").dataset.accelerator = s.settings.clipHotkey;
     $("hotkey").value = formatAccelerator(s.settings.clipHotkey) || "Disabled";
     $("marker-hotkey").dataset.accelerator = s.settings.markerHotkey || "";

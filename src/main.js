@@ -47,7 +47,7 @@ const DEFAULTS = {
   gameExecutables: [], audioExecutables: ['Discord.exe'],
   autoRecord: true, startWithWindows: true, clipHotkey: 'CommandOrControl+Shift+F10', markerHotkey: 'CommandOrControl+Shift+F9',
   gameProfiles: {},
-  pollSeconds: 5, stopDelaySeconds: 20, clipLengthSeconds: 60,
+  pollSeconds: 5, stopDelaySeconds: 20, clipLengthSeconds: 300, instantReplay: false,
   obsRecordingQuality: 'HQ', obsResolution: '1920x1080', obsFps: 60, obsFormat: 'mkv',
   microphoneDeviceId: 'disabled', microphoneVolumePercent: 100, microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
@@ -219,7 +219,7 @@ function todayFolder() {
   return folder;
 }
 function todayKey() { return new Date().toLocaleDateString('sv-SE'); }
-async function startSession() {
+async function startSession({ recording = true } = {}) {
   const profile = settings.gameProfiles?.[activeGames[0]?.toLowerCase()] || {};
   const captureSettings = { ...settings,
     obsRecordingQuality: profile.quality || settings.obsRecordingQuality,
@@ -244,13 +244,18 @@ async function startSession() {
     profile.microphoneDeviceId || settings.microphoneDeviceId,
     settings.microphoneVolumePercent,
     settings.microphoneNoiseGateDb,
-    settings.microphoneNvidiaNoiseRemoval
+    settings.microphoneNvidiaNoiseRemoval,
+    recording
   );
   sessionDate = todayKey();
-  sessionStartedAt = Date.now();
-  sessionMarkers = [];
+  sessionStartedAt = recording ? Date.now() : 0;
+  sessionMarkers = recording ? [] : sessionMarkers;
   sessionGame = activeGames[0] || 'Desktop capture';
-  showOverlayToast('Recording started', 'recording');
+  if (recording) showOverlayToast('Recording started', 'recording');
+}
+
+async function startInstantReplay() {
+  await startSession({ recording: false });
 }
 function finalizeSessionMetadata() {
   if (sessionMarkers.length || sessionGame) {
@@ -920,7 +925,10 @@ async function monitor() {
       if (captureStatus.recording && sessionDate && sessionDate !== todayKey()) {
         await obs.stopSession();
         await startSession();
-      } else if (!captureStatus.recording) await startSession();
+      } else if (!captureStatus.recording) {
+        if (captureStatus.replayBuffer) await obs.stopSession();
+        await startSession();
+      }
     } else if (settings.autoRecord && !activeGames.length && !stopTimer && captureStatus.recording) {
       stopTimer = setTimeout(async () => {
         stopTimer = null;
@@ -928,9 +936,18 @@ async function monitor() {
           await obs.stopSession().catch(setError);
           finalizeSessionMetadata();
           sessionDate = '';
-          await obs.disconnect().catch(() => {});
+          if (settings.instantReplay) await startInstantReplay().catch(setError);
+          else await obs.disconnect().catch(() => {});
         }
       }, settings.stopDelaySeconds * 1000);
+    } else if (settings.instantReplay && !captureStatus.recording && captureStatus.replayBuffer && sessionDate && sessionDate !== todayKey()) {
+      await obs.stopSession();
+      await startInstantReplay();
+    } else if (settings.instantReplay && !captureStatus.recording && !captureStatus.replayBuffer) {
+      await startInstantReplay();
+    } else if (!settings.instantReplay && !captureStatus.recording && captureStatus.replayBuffer) {
+      await obs.stopSession();
+      await obs.disconnect().catch(() => {});
     }
     lastError = '';
   } catch (error) { setError(error); }
@@ -1170,7 +1187,7 @@ function configureUpdates() {
 }
 function monitorDelayMs() {
   const configured = Math.max(2, Number(settings.pollSeconds) || 5) * 1000;
-  return activeGames.length || obs.lastStatus.recording ? configured : Math.max(10000, configured);
+  return activeGames.length || obs.lastStatus.recording || settings.instantReplay ? configured : Math.max(10000, configured);
 }
 function scheduleNextMonitor() {
   clearTimeout(monitorTimer);
@@ -1430,7 +1447,7 @@ async function saveSettings(next, { openWebOnDisable = true } = {}) {
     if (obs.connected && microphoneVolumeChanged) await obs.setMicrophoneVolume(settings.microphoneVolumePercent);
     if (obs.connected && microphoneNoiseGateChanged) await obs.setMicrophoneNoiseGate(settings.microphoneNoiseGateDb);
     if (obs.connected && microphoneNvidiaNoiseRemovalChanged) await obs.setMicrophoneNvidiaNoiseRemoval(settings.microphoneNvidiaNoiseRemoval);
-    if (restartCapture) await startSession();
+    if (restartCapture) await startSession({ recording: currentCapture.recording });
     lastError = '';
     if (desktopWindowChanged) {
       setImmediate(() => {
@@ -1456,13 +1473,20 @@ async function toggleRecording() {
     const output = await obs.status();
     if (output.recording) {
       autoRecordSuppressed = activeGames.length > 0;
-      await obs.stopSession();
+      if (settings.instantReplay) await obs.stopRecording();
+      else await obs.stopSession();
       finalizeSessionMetadata();
-      sessionDate = '';
-      await obs.disconnect();
+      if (settings.instantReplay) {
+        sessionDate = todayKey();
+        sessionGame = activeGames[0] || 'Desktop capture';
+      } else {
+        sessionDate = '';
+        await obs.disconnect();
+      }
       showOverlayToast('Recording stopped', 'recording-stopped');
     } else {
       autoRecordSuppressed = false;
+      if (output.replayBuffer) await obs.stopSession();
       await startSession();
     }
   } catch (error) { setError(error); }

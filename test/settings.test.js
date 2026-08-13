@@ -9,6 +9,7 @@ const base = {
   maxDiskUsagePercent: 80,
   maxRawRecordingGigabytes: 250,
   clipLengthSeconds: 60,
+  instantReplay: false,
   microphoneDeviceId: 'disabled',
   microphoneVolumePercent: 100,
   microphoneNoiseGateDb: -40,
@@ -35,6 +36,11 @@ test('storage and microphone settings are normalized for persistence', () => {
 test('desktop window remains the default unless explicitly disabled', () => {
   assert.equal(normalizeSettingsUpdate(base, { ...base }).desktopWindow, true);
   assert.equal(normalizeSettingsUpdate(base, { ...base, desktopWindow: false }).desktopWindow, false);
+});
+
+test('instant replay is opt-in', () => {
+  assert.equal(normalizeSettingsUpdate(base, { ...base }).instantReplay, false);
+  assert.equal(normalizeSettingsUpdate(base, { ...base, instantReplay: true }).instantReplay, true);
 });
 
 test('marker shortcut can be disabled by clearing it', () => {

@@ -20,6 +20,7 @@ function normalizeSettingsUpdate(current, next) {
     maxDiskUsagePercent: Math.min(99, Math.max(1, Number(next.maxDiskUsagePercent) || 80)),
     maxRawRecordingGigabytes: Math.max(1, Number(next.maxRawRecordingGigabytes) || 250),
     clipLengthSeconds: Math.max(5, Number(next.clipLengthSeconds) || 60),
+    instantReplay: !!next.instantReplay,
     microphoneDeviceId: String(next.microphoneDeviceId || 'disabled'),
     microphoneVolumePercent: Math.min(200, Math.max(0, Number(next.microphoneVolumePercent) || 0)),
     microphoneNoiseGateDb: Math.min(-5, Math.max(-60, Number(next.microphoneNoiseGateDb) || -40)),
