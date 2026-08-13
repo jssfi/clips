@@ -65,6 +65,8 @@ test('opening the browser UI reuses a connected tab', () => {
   assert.match(main, /ControlType\]::TabItem/);
   assert.match(main, /SelectionItemPattern\]::Pattern/);
   assert.match(main, /SetForegroundWindow/);
+  assert.match(main, /\$keys\.SendKeys\('\^\+a'\)/);
+  assert.match(main, /method = 'tab-search'/);
   assert.match(web, /addEventListener\('activate-ui'/);
   assert.match(web, /window\.focus\(\)/);
   assert.match(main, /browser-gateway\.json/);

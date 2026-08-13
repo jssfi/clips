@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Browser focus works in Helium",
+    "changes": [
+      "Opening Clips now finds its existing tab in Helium and other Chromium browsers even when the browser hides its tab strip from Windows accessibility tools."
+    ]
+  },
+  {
     "version": "0.4-64de93ff",
     "title": "Opening Clips finds its browser tab",
     "changes": [
