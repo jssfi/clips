@@ -47,7 +47,7 @@ const DEFAULTS = {
   gameExecutables: [], audioExecutables: ['Discord.exe'],
   autoRecord: true, startWithWindows: true, clipHotkey: 'CommandOrControl+Shift+F10', markerHotkey: 'CommandOrControl+Shift+F9',
   gameProfiles: {},
-  pollSeconds: 5, stopDelaySeconds: 20, clipLengthSeconds: 300, instantReplay: false,
+  pollSeconds: 5, stopDelaySeconds: 20, clipLengthSeconds: 60, instantReplay: false, instantReplayLengthSeconds: 300,
   obsRecordingQuality: 'HQ', obsResolution: '1920x1080', obsFps: 60, obsFormat: 'mkv',
   microphoneDeviceId: 'disabled', microphoneVolumePercent: 100, microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
@@ -219,14 +219,24 @@ function todayFolder() {
   return folder;
 }
 function todayKey() { return new Date().toLocaleDateString('sv-SE'); }
-async function startSession({ recording = true } = {}) {
+async function startSession({ recording = true, replayLengthSeconds = 0 } = {}) {
   const profile = settings.gameProfiles?.[activeGames[0]?.toLowerCase()] || {};
   const captureSettings = { ...settings,
     obsRecordingQuality: profile.quality || settings.obsRecordingQuality,
     obsResolution: profile.resolution || settings.obsResolution,
     obsFps: profile.fps || settings.obsFps,
-    clipLengthSeconds: profile.clipLengthSeconds || settings.clipLengthSeconds };
+    clipLengthSeconds: replayLengthSeconds || profile.clipLengthSeconds || settings.clipLengthSeconds };
   if (!await tryConnect(captureSettings)) throw new Error(lastError || 'The Clips capture engine could not start.');
+  if (obs.settings && ['obsRecordingQuality', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
+    .some(key => obs.settings[key] !== captureSettings[key])) {
+    await obs.applyRecordingSettings({
+      quality: captureSettings.obsRecordingQuality,
+      resolution: captureSettings.obsResolution,
+      fps: captureSettings.obsFps,
+      format: captureSettings.obsFormat,
+      clipLengthSeconds: captureSettings.clipLengthSeconds
+    });
+  }
   cleanupStorage();
   const wantedAudio = new Set([...(profile.audioExecutables || settings.audioExecutables), ...activeGames].map(name => name.toLowerCase()));
   const outputDirectory = todayFolder();
@@ -255,7 +265,7 @@ async function startSession({ recording = true } = {}) {
 }
 
 async function startInstantReplay() {
-  await startSession({ recording: false });
+  await startSession({ recording: false, replayLengthSeconds: settings.instantReplayLengthSeconds });
 }
 function finalizeSessionMetadata() {
   if (sessionMarkers.length || sessionGame) {
@@ -1108,6 +1118,81 @@ function webAppLaunchUrl() {
   url.hash = new URLSearchParams({ gateway: gatewayToken, port: String(DEFAULT_GATEWAY_PORT) }).toString();
   return url.toString();
 }
+async function focusConnectedBrowserTab({ refresh = false, foreground = true } = {}) {
+  const refreshLiteral = refresh ? '$true' : '$false';
+  const foregroundLiteral = foreground ? '$true' : '$false';
+  const script = `
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class ClipsBrowserFocus {
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int command);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+}
+'@
+$browserNames = @('chrome', 'msedge', 'firefox', 'brave', 'vivaldi', 'opera')
+$refresh = ${refreshLiteral}
+$foreground = ${foregroundLiteral}
+$root = [System.Windows.Automation.AutomationElement]::RootElement
+$windows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+foreach ($window in $windows) {
+  try {
+    $process = Get-Process -Id $window.Current.ProcessId -ErrorAction Stop
+    if ($browserNames -notcontains $process.ProcessName.ToLowerInvariant()) { continue }
+    $tabs = $window.FindAll(
+      [System.Windows.Automation.TreeScope]::Descendants,
+      [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::TabItem
+      )
+    )
+    foreach ($tab in $tabs) {
+      if ($tab.Current.Name -notmatch '^Clips(?:$|[ —-])') { continue }
+      $pattern = $null
+      if ($tab.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
+        ([System.Windows.Automation.SelectionItemPattern]$pattern).Select()
+      }
+      if ($foreground -or $refresh) {
+        [ClipsBrowserFocus]::ShowWindow($process.MainWindowHandle, 9) | Out-Null
+        [ClipsBrowserFocus]::SetForegroundWindow($process.MainWindowHandle) | Out-Null
+      }
+      if ($refresh) {
+        Start-Sleep -Milliseconds 100
+        (New-Object -ComObject WScript.Shell).SendKeys('^r')
+      }
+      [pscustomobject]@{ focused = $true; browser = $process.ProcessName } | ConvertTo-Json -Compress
+      exit 0
+    }
+  } catch {}
+}
+[pscustomobject]@{ focused = $false } | ConvertTo-Json -Compress
+`;
+  const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+  try {
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript], {
+      windowsHide: true,
+      timeout: 5000
+    });
+    const result = JSON.parse(stdout.trim() || '{}');
+    logger.info('browser UI focus requested', { focused: !!result.focused, browser: result.browser || '' });
+    return !!result.focused;
+  } catch (error) {
+    logger.warn('could not focus existing browser tab', { message: error.message });
+    return false;
+  }
+}
+let browserUiRefreshPending = false;
+function refreshStaleBrowserUi(details) {
+  if (browserUiRefreshPending) return;
+  browserUiRefreshPending = true;
+  logger.info('refreshing stale browser UI', details);
+  setTimeout(async () => {
+    await focusConnectedBrowserTab({ refresh: true, foreground: false });
+    setTimeout(() => { browserUiRefreshPending = false; }, 2000);
+  }, 250);
+}
 async function openWebUi() {
   if (!gatewayReady) {
     showMainWindow();
@@ -1116,6 +1201,7 @@ async function openWebUi() {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     if (gateway?.hasEventClients()) {
       gateway.emit('activate-ui', { requestedAt: Date.now() });
+      await focusConnectedBrowserTab();
       return true;
     }
     if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 250));
@@ -1405,12 +1491,14 @@ async function saveSettings(next, { openWebOnDisable = true } = {}) {
     const desktopWindowChanged = updated.desktopWindow !== previous.desktopWindow;
     const recordingSettingsChanged = ['obsRecordingQuality', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
       .some(key => updated[key] !== previous[key]);
+    const idleReplayLengthChanged = updated.instantReplayLengthSeconds !== previous.instantReplayLengthSeconds;
     const microphoneVolumeChanged = updated.microphoneVolumePercent !== previous.microphoneVolumePercent;
     const microphoneNoiseGateChanged = updated.microphoneNoiseGateDb !== previous.microphoneNoiseGateDb;
     const microphoneNvidiaNoiseRemovalChanged = updated.microphoneNvidiaNoiseRemoval !== previous.microphoneNvidiaNoiseRemoval;
     const currentCapture = await obs.status();
-    const restartCapture = (currentCapture.recording || currentCapture.replayBuffer)
-      && captureRestartRequired(previous, updated);
+    const restartCapture = ((currentCapture.recording || currentCapture.replayBuffer)
+      && captureRestartRequired(previous, updated))
+      || (!currentCapture.recording && currentCapture.replayBuffer && idleReplayLengthChanged);
     if (restartCapture) {
       logger.info('restarting capture to apply settings', {
         previousFolder: previous.recordingsFolder,
@@ -1447,7 +1535,8 @@ async function saveSettings(next, { openWebOnDisable = true } = {}) {
     if (obs.connected && microphoneVolumeChanged) await obs.setMicrophoneVolume(settings.microphoneVolumePercent);
     if (obs.connected && microphoneNoiseGateChanged) await obs.setMicrophoneNoiseGate(settings.microphoneNoiseGateDb);
     if (obs.connected && microphoneNvidiaNoiseRemovalChanged) await obs.setMicrophoneNvidiaNoiseRemoval(settings.microphoneNvidiaNoiseRemoval);
-    if (restartCapture) await startSession({ recording: currentCapture.recording });
+    if (restartCapture) await startSession({ recording: currentCapture.recording,
+      replayLengthSeconds: currentCapture.recording ? 0 : settings.instantReplayLengthSeconds });
     lastError = '';
     if (desktopWindowChanged) {
       setImmediate(() => {
@@ -1473,12 +1562,10 @@ async function toggleRecording() {
     const output = await obs.status();
     if (output.recording) {
       autoRecordSuppressed = activeGames.length > 0;
-      if (settings.instantReplay) await obs.stopRecording();
-      else await obs.stopSession();
+      await obs.stopSession();
       finalizeSessionMetadata();
       if (settings.instantReplay) {
-        sessionDate = todayKey();
-        sessionGame = activeGames[0] || 'Desktop capture';
+        await startInstantReplay();
       } else {
         sessionDate = '';
         await obs.disconnect();
@@ -1658,6 +1745,8 @@ app.whenReady().then(async () => {
       web: path.join(__dirname, '..', 'clips-worker', 'src', 'web.js'),
       webCss: path.join(__dirname, '..', 'clips-worker', 'src', 'web.css')
     },
+    uiVersion: displayVersion(app.getVersion()),
+    onStaleUi: refreshStaleBrowserUi,
     approvePairing: async ({ origin, clientName }) => {
       if (origin === `http://127.0.0.1:${DEFAULT_GATEWAY_PORT}`) return true;
       const options = {

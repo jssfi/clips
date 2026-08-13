@@ -29,6 +29,7 @@
       stopDelaySeconds: 20,
       clipLengthSeconds: 60,
       instantReplay: false,
+      instantReplayLengthSeconds: 300,
       obsRecordingQuality: 'HQ',
       obsResolution: '1920x1080',
       obsFps: 60,
@@ -115,7 +116,8 @@
   }
   function connectEvents() {
     events?.close();
-    events = new EventSource(`${gatewayBase()}/events?token=${encodeURIComponent(gatewayToken)}`);
+    const uiVersion = encodeURIComponent(currentState?.app?.version || '');
+    events = new EventSource(`${gatewayBase()}/events?token=${encodeURIComponent(gatewayToken)}&uiVersion=${uiVersion}`);
     events.addEventListener('state', event => {
       currentState = JSON.parse(event.data);
       callbacks.state.forEach(callback => callback(clone(currentState)));

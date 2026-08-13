@@ -75,3 +75,25 @@ test('gateway advertises local-network preflight permission', async () => withGa
   assert.equal(response.status, 204);
   assert.equal(response.headers.get('access-control-allow-private-network'), 'true');
 }));
+
+test('gateway identifies a surviving browser UI from an older app build', async () => {
+  let staleUi;
+  const gateway = createGateway({
+    token: 'a-secure-test-token',
+    port: 0,
+    allowedOrigins: [origin],
+    approvePairing: async () => true,
+    invoke: async () => ({}),
+    uiVersion: '0.4-new',
+    onStaleUi: details => { staleUi = details; }
+  });
+  const port = await gateway.start();
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/v1/events?token=a-secure-test-token&uiVersion=0.4-old`, { headers: { Origin: origin } });
+    const reader = response.body.getReader();
+    await reader.read();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(staleUi, { clientUiVersion: '0.4-old', uiVersion: '0.4-new' });
+    await reader.cancel();
+  } finally { gateway.close(); }
+});

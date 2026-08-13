@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Opening Clips finds its browser tab",
+    "changes": [
+      "Double-clicking Clips or choosing Open now selects the existing Clips browser tab and brings its browser window forward instead of appearing to do nothing.",
+      "Idle instant replay now has its own length setting, defaulting to five minutes, while using the same Save clip button and shortcut as normal recording clips."
+    ]
+  },
+  {
     "version": "0.4-d30a3593",
     "title": "Never miss the last five minutes",
     "changes": [

@@ -46,7 +46,9 @@ function createGateway({
   logger,
   allowedOrigins = ['https://clips.jss.fi'],
   port = DEFAULT_GATEWAY_PORT,
-  webAssets = null
+  webAssets = null,
+  uiVersion = '',
+  onStaleUi = null
 }) {
   const origins = new Set(allowedOrigins);
   const eventClients = new Set();
@@ -162,6 +164,10 @@ function createGateway({
       });
       response.write(': connected\n\n');
       eventClients.add(response);
+      const clientUiVersion = String(url.searchParams.get('uiVersion') || '');
+      if (uiVersion && clientUiVersion !== uiVersion) {
+        setImmediate(() => onStaleUi?.({ clientUiVersion, uiVersion }));
+      }
       request.on('close', () => eventClients.delete(response));
       return;
     }

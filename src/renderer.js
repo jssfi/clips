@@ -118,6 +118,7 @@ const values = () => ({
   maxRawRecordingGigabytes: Number($("raw-gigabytes").value),
   clipLengthSeconds: Number($("clip-length").value),
   instantReplay: $("instant-replay").checked,
+  instantReplayLengthSeconds: Number($("instant-replay-length").value),
   clipHotkey: $("hotkey").dataset.accelerator ?? "",
   markerHotkey: $("marker-hotkey").dataset.accelerator ?? "",
   stopDelaySeconds: Number($("delay").value),
@@ -307,6 +308,7 @@ function render(s, fill = false) {
     $("raw-gigabytes").value = s.settings.maxRawRecordingGigabytes;
     $("clip-length").value = s.settings.clipLengthSeconds;
     $("instant-replay").checked = !!s.settings.instantReplay;
+    $("instant-replay-length").value = s.settings.instantReplayLengthSeconds ?? 300;
     $("hotkey").dataset.accelerator = s.settings.clipHotkey;
     $("hotkey").value = formatAccelerator(s.settings.clipHotkey) || "Disabled";
     $("marker-hotkey").dataset.accelerator = s.settings.markerHotkey || "";
