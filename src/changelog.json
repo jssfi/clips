@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.1",
     "title": "Faster release delivery",
     "changes": [
       "Release builds and uploads now run independent work concurrently, substantially reducing the time required to ship fixes and new features."
