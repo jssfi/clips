@@ -876,12 +876,20 @@ using System.Runtime.InteropServices;
 public static class ClipsProcessWindow {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder text, int count);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out ClipsWindowRect rect);
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+  [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr monitor, ref ClipsMonitorInfo info);
 }
 public struct ClipsWindowRect {
   public int Left;
   public int Top;
   public int Right;
   public int Bottom;
+}
+public struct ClipsMonitorInfo {
+  public int Size;
+  public ClipsWindowRect Monitor;
+  public ClipsWindowRect Work;
+  public uint Flags;
 }
 '@
 Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
@@ -892,11 +900,21 @@ Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
     [ClipsProcessWindow]::GetClassName($_.MainWindowHandle, $windowClass, 256) | Out-Null
     $windowRect = New-Object ClipsWindowRect
     $hasBounds = [ClipsProcessWindow]::GetWindowRect($_.MainWindowHandle, [ref]$windowRect)
+    $monitorInfo = New-Object ClipsMonitorInfo
+    $monitorInfo.Size = [Runtime.InteropServices.Marshal]::SizeOf($monitorInfo)
+    $monitor = [ClipsProcessWindow]::MonitorFromWindow($_.MainWindowHandle, 2)
+    $hasMonitor = $monitor -ne [IntPtr]::Zero -and [ClipsProcessWindow]::GetMonitorInfo($monitor, [ref]$monitorInfo)
+    $isFullscreen = $hasBounds -and $hasMonitor -and
+      [Math]::Abs($windowRect.Left - $monitorInfo.Monitor.Left) -le 2 -and
+      [Math]::Abs($windowRect.Top - $monitorInfo.Monitor.Top) -le 2 -and
+      [Math]::Abs($windowRect.Right - $monitorInfo.Monitor.Right) -le 2 -and
+      [Math]::Abs($windowRect.Bottom - $monitorInfo.Monitor.Bottom) -le 2
     [pscustomobject]@{
       name = $_.ProcessName + '.exe'
       path = $processPath
       title = $_.MainWindowTitle
       windowClass = $windowClass.ToString()
+      isFullscreen = $isFullscreen
       bounds = if ($hasBounds) { [pscustomobject]@{
         x = $windowRect.Left
         y = $windowRect.Top

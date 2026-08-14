@@ -15,6 +15,7 @@ function candidateKey(application) {
 function isProbableGameWindow(application) {
   const key = candidateKey(application);
   if (!key || !key.endsWith('.exe') || EXCLUDED_EXECUTABLES.has(key)) return false;
+  if (application?.isFullscreen !== true) return false;
   const bounds = application?.bounds;
   if (!bounds || bounds.width < 960 || bounds.height < 540) return false;
   const executablePath = String(application.path || '').toLowerCase();

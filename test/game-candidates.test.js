@@ -2,11 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { isProbableGameWindow, updateCandidateHistory } = require('../src/game-candidates');
 
-const game = { name: 'ExampleGame.exe', path: 'D:\\Games\\ExampleGame.exe', title: 'Example Game', bounds: { x: 0, y: 0, width: 1920, height: 1080 } };
+const game = { name: 'ExampleGame.exe', path: 'D:\\Games\\ExampleGame.exe', title: 'Example Game', isFullscreen: true, bounds: { x: 0, y: 0, width: 1920, height: 1080 } };
 
-test('large non-system windows can become game candidates', () => {
+test('only fullscreen non-system windows can become game candidates', () => {
   assert.equal(isProbableGameWindow(game), true);
   assert.equal(isProbableGameWindow({ ...game, name: 'chrome.exe' }), false);
+  assert.equal(isProbableGameWindow({ ...game, isFullscreen: false }), false);
+  assert.equal(isProbableGameWindow({ ...game, isFullscreen: undefined }), false);
   assert.equal(isProbableGameWindow({ ...game, bounds: { x: 0, y: 0, width: 800, height: 500 } }), false);
 });
 
