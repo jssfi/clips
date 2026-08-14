@@ -14,6 +14,12 @@ const artifacts = [
   `jss-clips-app-${version}-x64.zip`,
   `jss-clips-source-${version}.zip`
 ];
+function displayVersion(value) {
+  const nightly = /^(\d+\.\d+)\.\d+-nightly\.\d+\.([0-9a-f]+)$/i.exec(value);
+  if (nightly) return `${nightly[1]}-${nightly[2]}`;
+  const stable = /^(\d+\.\d+)\.0$/.exec(value);
+  return stable ? stable[1] : value;
+}
 
 function credential() {
   if (process.env.GITHUB_TOKEN || process.env.GH_TOKEN) return process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
@@ -60,7 +66,7 @@ if (response.status === 404) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       tag_name: tag,
-      name: `Clips ${entry?.version || version}`,
+      name: `Clips ${entry?.version || displayVersion(version)}`,
       body: [`## ${entry?.title || 'Clips release'}`, '', ...(entry?.changes || []).map(change => `- ${change}`)].join('\n'),
       prerelease: version.includes('-'),
       draft: false
@@ -71,6 +77,14 @@ if (response.status === 404) {
 } else {
   release = await response.json();
   console.log(`Using existing GitHub release ${tag}`);
+}
+const expectedName = `Clips ${displayVersion(version)}`;
+if (release.name !== expectedName) {
+  const updated = await api(`/repos/${repository}/releases/${release.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: expectedName })
+  });
+  release = await updated.json();
+  console.log(`Named GitHub release ${expectedName}`);
 }
 
 const existing = new Map((release.assets || []).map(asset => [asset.name, asset]));

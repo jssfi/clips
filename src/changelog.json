@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Complete release archive migration",
+    "changes": [
+      "Stable installers and update packages now share the same permanent GitHub archive and backward-compatible download redirects as nightly releases.",
+      "GitHub release titles use the same concise 0.4-commit format shown inside Clips instead of exposing the updater's internal SemVer."
+    ]
+  },
+  {
     "version": "0.4-15eea38b",
     "title": "Reliable release archiving",
     "changes": [
