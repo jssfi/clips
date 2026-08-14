@@ -134,6 +134,7 @@ const values = () => ({
   microphoneNvidiaNoiseRemoval: $("microphone-nvidia-noise-removal").checked,
   audioExecutables: state.settings.audioExecutables,
   gameExecutables: state.settings.gameExecutables,
+  ignoredGameExecutables: state.settings.ignoredGameExecutables || [],
   gameProfiles: state.settings.gameProfiles || {},
   trimBitrate: $("trim-bitrate").value,
   desktopWindow: $("desktop-window").checked,
@@ -216,6 +217,10 @@ function render(s, fill = false) {
         )
         .join("")
     : '<div class="muted">No games added. Add a running game to begin.</div>';
+  $("ignored-game-list").innerHTML = s.settings.ignoredGameExecutables?.length
+    ? `<div class="muted">Ignored detections</div>${s.settings.ignoredGameExecutables.map((x, i) =>
+        `<div class="chip"><span>${escapeHtml(x)}</span><button data-remove-ignored="${i}" aria-label="Detect ${escapeHtml(x)} again">&times;</button></div>`).join("")}`
+    : "";
   $("game-profiles").innerHTML = s.settings.gameExecutables.length ? s.settings.gameExecutables.map(game => {
     const key = game.toLowerCase(); const profile = s.settings.gameProfiles?.[key] || {};
     return `<div class="settings-row game-profile" data-profile-game="${escapeHtml(key)}"><span><strong>${escapeHtml(game)}</strong><small>Blank values use the global capture profile.</small></span><span class="profile-controls"><select data-profile="quality"><option value="">Default quality</option><option value="HQ"${profile.quality === "HQ" ? " selected" : ""}>High</option><option value="Small"${profile.quality === "Small" ? " selected" : ""}>Small</option></select><select data-profile="resolution"><option value="">Default resolution</option><option value="2560x1440"${profile.resolution === "2560x1440" ? " selected" : ""}>1440p</option><option value="1920x1080"${profile.resolution === "1920x1080" ? " selected" : ""}>1080p</option><option value="1280x720"${profile.resolution === "1280x720" ? " selected" : ""}>720p</option></select><select data-profile="fps"><option value="0">Default FPS</option><option value="60"${profile.fps === 60 ? " selected" : ""}>60 FPS</option><option value="30"${profile.fps === 30 ? " selected" : ""}>30 FPS</option></select><input data-profile="clipLengthSeconds" type="number" min="5" max="3600" placeholder="Default seconds" value="${profile.clipLengthSeconds || ""}"></span></div>`;
@@ -545,6 +550,12 @@ $("disable-marker-hotkey").onclick = () => disableShortcut(markerShortcutInput, 
 $("game-list").onclick = async (e) => {
   if (e.target.dataset.remove != null) {
     state.settings.gameExecutables.splice(Number(e.target.dataset.remove), 1);
+    render(await window.clips.saveSettings(values()), true);
+  }
+};
+$("ignored-game-list").onclick = async (e) => {
+  if (e.target.dataset.removeIgnored != null) {
+    state.settings.ignoredGameExecutables.splice(Number(e.target.dataset.removeIgnored), 1);
     render(await window.clips.saveSettings(values()), true);
   }
 };

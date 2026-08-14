@@ -18,6 +18,7 @@ const { createLogger } = require('./logger');
 const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
 const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./telemetry');
 const { parseProcessList } = require('./process-list');
+const { candidateKey, updateCandidateHistory } = require('./game-candidates');
 const { displayVersion } = require('./version');
 const { LibraryMetadata, storageInsights, concatManifest } = require('./library');
 const { createGateway, DEFAULT_GATEWAY_PORT } = require('./gateway');
@@ -44,7 +45,7 @@ const persistentRuntimeRoot = runtimeRoot(process.env.LOCALAPPDATA || app.getPat
 const DEFAULTS = {
   recordingsFolder: path.join(os.homedir(), 'Videos', 'Clips'),
   retentionDays: 1, storageCleanupMode: 'disk', maxDiskUsagePercent: 80, maxRawRecordingGigabytes: 250,
-  gameExecutables: [], audioExecutables: ['Discord.exe'],
+  gameExecutables: [], ignoredGameExecutables: [], audioExecutables: ['Discord.exe'],
   autoRecord: true, startWithWindows: true, clipHotkey: 'CommandOrControl+Shift+F10', markerHotkey: 'CommandOrControl+Shift+F9',
   gameProfiles: {},
   pollSeconds: 5, stopDelaySeconds: 20, clipLengthSeconds: 60, instantReplay: false, instantReplayLengthSeconds: 300,
@@ -74,6 +75,10 @@ const telemetryEndpoint = configuredEndpoint();
 let telemetry = null;
 let systemInformation = null;
 let previousCaptureHealth = null;
+const gameCandidateHistory = new Map();
+let pendingGameCandidate = null;
+const ADD_GAME_HOTKEY = 'CommandOrControl+Shift+F11';
+const IGNORE_GAME_HOTKEY = 'CommandOrControl+Shift+F12';
 let libraryMetadata = null;
 let microphoneListPromise = null;
 const gatewayTokenPath = path.join(app.getPath('userData'), 'browser-gateway.json');
@@ -922,6 +927,16 @@ async function monitor() {
     cleanupStorage();
     const running = await processes();
     runningApps = running;
+    const candidates = updateCandidateHistory(
+      gameCandidateHistory,
+      running,
+      settings.gameExecutables,
+      settings.ignoredGameExecutables
+    );
+    if (!pendingGameCandidate && candidates[0]) {
+      pendingGameCandidate = candidates[0];
+      showGameCandidatePrompt();
+    }
     const wanted = new Set(settings.gameExecutables.map(x => x.toLowerCase()));
     activeGames = running.filter(p => wanted.has(p.name.toLowerCase())).map(p => p.name);
     const captureStatus = await obs.status();
@@ -1312,6 +1327,31 @@ function registerHotkey() {
   globalShortcut.unregisterAll();
   if (settings.clipHotkey) globalShortcut.register(settings.clipHotkey, () => saveClip());
   if (settings.markerHotkey && settings.markerHotkey !== settings.clipHotkey) globalShortcut.register(settings.markerHotkey, addTimelineMarker);
+  if (!globalShortcut.register(ADD_GAME_HOTKEY, () => resolveGameCandidate(true)))
+    logger.warn('new game add shortcut could not be registered', { shortcut: ADD_GAME_HOTKEY });
+  if (!globalShortcut.register(IGNORE_GAME_HOTKEY, () => resolveGameCandidate(false)))
+    logger.warn('new game ignore shortcut could not be registered', { shortcut: IGNORE_GAME_HOTKEY });
+}
+function showGameCandidatePrompt() {
+  if (!pendingGameCandidate) return;
+  displayOverlayToast({
+    message: `New game? ${pendingGameCandidate.name}`,
+    detail: 'Ctrl+Shift+F11 Add  ·  Ctrl+Shift+F12 Ignore',
+    kind: 'game-candidate'
+  });
+}
+function resolveGameCandidate(add) {
+  const candidate = pendingGameCandidate;
+  if (!candidate) return;
+  pendingGameCandidate = null;
+  const key = candidateKey(candidate);
+  gameCandidateHistory.delete(key);
+  const target = add ? settings.gameExecutables : settings.ignoredGameExecutables;
+  if (!target.some(name => String(name).toLowerCase() === key)) target.push(candidate.name);
+  persist();
+  showOverlayToast(add ? `${candidate.name} added` : `${candidate.name} ignored`, add ? 'recording' : 'recording-stopped');
+  broadcast();
+  scheduleMonitor();
 }
 async function saveClip() {
   try {
@@ -1374,12 +1414,14 @@ function displayOverlayToast(toast) {
   reinforceOverlayTopmost();
   toastWin.webContents.send('toast:show', toast);
   logger.info('overlay toast shown', { kind: toast.kind, displayId: display?.id, bounds: toastWin.getBounds(), alwaysOnTop: toastWin.isAlwaysOnTop() });
+  if (toast.kind === 'game-candidate') return;
   const visibleDuration = toast.kind === 'warning' || toast.kind === 'error'
     ? 6000
     : toast.kind === 'recording' || toast.kind === 'recording-stopped' ? 1350 : 1000;
   toastHideTimer = setTimeout(() => {
     if (!toastWin || toastWin.isDestroyed()) return;
-    toastWin.webContents.send('toast:hide');
+    if (pendingGameCandidate) showGameCandidatePrompt();
+    else toastWin.webContents.send('toast:hide');
   }, visibleDuration);
 }
 function showOverlayToast(message, kind) { displayOverlayToast({ message, kind }); }

@@ -28,6 +28,7 @@ function normalizeSettingsUpdate(current, next) {
     microphoneNvidiaNoiseRemoval: next.microphoneNvidiaNoiseRemoval !== false,
     microphoneNoiseSuppression: undefined,
     audioExecutables: Array.isArray(next.audioExecutables) ? next.audioExecutables : [],
+    ignoredGameExecutables: Array.isArray(next.ignoredGameExecutables) ? next.ignoredGameExecutables.map(String) : [],
     markerHotkey: String(next.markerHotkey ?? '').trim(),
     gameProfiles,
     desktopWindow: next.desktopWindow !== false,

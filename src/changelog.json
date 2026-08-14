@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "New game detection",
+    "changes": [
+      "Clips now notices sustained, game-sized windows that are not in the monitored list and shows in-game shortcuts to add or permanently ignore them."
+    ]
+  },
+  {
     "version": "0.4-b8fb69e1",
     "title": "Capture recovers after encoder failures",
     "changes": [
