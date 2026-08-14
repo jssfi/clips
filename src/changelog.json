@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.2",
     "title": "Game detection that understands fullscreen",
     "changes": [
       "New-game prompts now require a window to cover its monitor, preventing ordinary maximized apps, editors, browsers, and overlays from being mistaken for games."
