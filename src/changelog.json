@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-b8fb69e1",
     "title": "Capture recovers after encoder failures",
     "changes": [
       "Clips now replaces an unresponsive capture engine after a GPU encoder failure, allowing recording to restart instead of repeatedly timing out."
