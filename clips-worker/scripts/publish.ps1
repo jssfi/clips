@@ -2,7 +2,8 @@ param(
     [string]$Version,
     [string]$Bucket,
     [ValidateSet('nightly', 'stable', 'both')]
-    [string]$Channel = 'nightly'
+    [string]$Channel = 'nightly',
+    [switch]$WaitForArchive
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,9 +56,22 @@ $stagedLatest = Get-Content (Join-Path $dist 'latest.json') -Raw | ConvertFrom-J
 if ($stagedLatest.version -ne $Version -or $stagedLatest.url -ne $appPackageName -or -not $stagedLatest.signature) {
     throw "dist\latest.json does not describe staged update $Version."
 }
-& node (Join-Path $projectRoot 'scripts\publish-github-release.mjs') $Version
-if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publishing failed; R2 was left unchanged.' }
 & node (Join-Path $workerRoot 'scripts\publish-r2.mjs') $dist $Bucket $Channel $Version
 if ($LASTEXITCODE -ne 0) { throw 'R2 publishing failed.' }
 
-Write-Host "Published Clips $Version to GitHub Releases and $Channel metadata to R2."
+$archiveScript = Join-Path $projectRoot 'scripts\archive-release-background.mjs'
+if ($WaitForArchive) {
+    & node $archiveScript $dist $Bucket $Channel $Version
+    if ($LASTEXITCODE -ne 0) { throw 'GitHub archival failed; release artifacts remain safely on R2.' }
+    Write-Host "Published Clips $Version and completed GitHub archival."
+} else {
+    $logRoot = Join-Path $dist 'archive-logs'
+    New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+    $safeVersion = $Version -replace '[^0-9A-Za-z.-]', '_'
+    $stdout = Join-Path $logRoot "$safeVersion.out.log"
+    $stderr = Join-Path $logRoot "$safeVersion.err.log"
+    $node = (Get-Command node -ErrorAction Stop).Source
+    $process = Start-Process -FilePath $node -ArgumentList @($archiveScript, $dist, $Bucket, $Channel, $Version) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+    Write-Host "Clips $Version is live from R2. GitHub archival continues in background (PID $($process.Id))."
+    Write-Host "Archive logs: $stdout"
+}
