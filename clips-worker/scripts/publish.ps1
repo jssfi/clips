@@ -33,6 +33,7 @@ $installerName = "jss-clips-update-$Version-x64.exe"
 $appPackageName = "jss-clips-app-$Version-x64.zip"
 $sourceName = "jss-clips-source-$Version.zip"
 $currentArtifacts = @($installerName, "$installerName.blockmap", $appPackageName, $sourceName)
+if ($Version -notmatch '-') { $currentArtifacts += "jss-clips-setup-$Version-x64.exe" }
 $files = @(
     @{ Name = $installerName; Type = 'application/octet-stream'; Cache = 'public, max-age=31536000, immutable' },
     @{ Name = "$installerName.blockmap"; Type = 'application/octet-stream'; Cache = 'public, max-age=31536000, immutable' },

@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.4.1",
+    "title": "New game detection and permanent releases",
+    "changes": [
+      "Clips detects sustained game-sized windows outside the monitored list and shows in-game shortcuts to add or ignore them.",
+      "Capture automatically recovers from an unresponsive engine after GPU encoder failures.",
+      "Installers, update packages, and corresponding source are permanently archived together on GitHub Releases while existing update addresses continue to work."
+    ]
+  },
+  {
     "version": "0.4-c3f10a72",
     "title": "Complete release archive migration",
     "changes": [

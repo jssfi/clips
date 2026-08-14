@@ -20,6 +20,7 @@ const artifactNames = [
   `jss-clips-app-${version}-x64.zip`,
   `jss-clips-source-${version}.zip`
 ];
+if (!version.includes('-')) artifactNames.push(`jss-clips-setup-${version}-x64.exe`);
 const files = ['latest.yml', 'latest.json'];
 const types = { '.exe': 'application/octet-stream', '.blockmap': 'application/octet-stream', '.zip': 'application/zip', '.yml': 'text/yaml; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 

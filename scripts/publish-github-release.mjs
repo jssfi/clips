@@ -14,6 +14,7 @@ const artifacts = [
   `jss-clips-app-${version}-x64.zip`,
   `jss-clips-source-${version}.zip`
 ];
+if (!version.includes('-')) artifacts.push(`jss-clips-setup-${version}-x64.exe`);
 function displayVersion(value) {
   const nightly = /^(\d+\.\d+)\.\d+-nightly\.\d+\.([0-9a-f]+)$/i.exec(value);
   if (nightly) return `${nightly[1]}-${nightly[2]}`;
