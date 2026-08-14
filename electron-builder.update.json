@@ -49,6 +49,7 @@
   ],
   "asar": true,
   "compression": "normal",
+  "npmRebuild": false,
   "win": {
     "icon": "assets/app-icon.ico",
     "target": ["nsis"]

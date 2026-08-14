@@ -90,23 +90,26 @@ if (release.name !== expectedName) {
 
 const existing = new Map((release.assets || []).map(asset => [asset.name, asset]));
 const uploadBase = String(release.upload_url).replace(/\{.*$/, '');
-for (const name of artifacts) {
+async function uploadArtifact(name) {
   const file = path.join(dist, name);
   const size = fs.statSync(file).size;
   const current = existing.get(name);
   if (current) {
     if (Number(current.size) !== size) throw new Error(`GitHub asset ${name} exists with the wrong size.`);
     console.log(`Verified GitHub asset ${name} (${size} bytes)`);
-    continue;
+    return;
   }
+  const started = Date.now();
+  console.log(`Uploading GitHub asset ${name} (${size} bytes)`);
   const upload = await fetch(`${uploadBase}?name=${encodeURIComponent(name)}`, {
     method: 'POST', headers: { ...headers, 'Content-Type': 'application/octet-stream', 'Content-Length': String(size) },
-    body: fs.createReadStream(file), duplex: 'half'
+    body: fs.createReadStream(file, { highWaterMark: 4 * 1024 * 1024 }), duplex: 'half'
   });
   if (!upload.ok) throw new Error(`GitHub upload failed for ${name}: HTTP ${upload.status} ${await upload.text()}`);
   const asset = await upload.json();
   if (Number(asset.size) !== size || asset.state !== 'uploaded') throw new Error(`GitHub did not finish uploading ${name}.`);
-  console.log(`Uploaded GitHub asset ${name} (${size} bytes)`);
+  console.log(`Uploaded GitHub asset ${name} (${size} bytes) in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 }
+await Promise.all(artifacts.map(uploadArtifact));
 
 console.log(`Published and verified https://github.com/${repository}/releases/tag/${tag}`);
