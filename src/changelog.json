@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-c3f10a72",
     "title": "Complete release archive migration",
     "changes": [
       "Stable installers and update packages now share the same permanent GitHub archive and backward-compatible download redirects as nightly releases.",
