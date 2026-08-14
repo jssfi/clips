@@ -31,10 +31,11 @@ test('legal staging includes first-party and exact upstream notices', () => {
   }
 });
 
-test('release publishing includes and retains corresponding source bundles', () => {
-  const publisher = fs.readFileSync(path.join(root, 'clips-worker', 'scripts', 'publish-r2.mjs'), 'utf8');
+test('release publishing archives corresponding source bundles on GitHub', () => {
+  const publisher = fs.readFileSync(path.join(root, 'scripts', 'publish-github-release.mjs'), 'utf8');
   const worker = fs.readFileSync(path.join(root, 'clips-worker', 'src', 'updates.ts'), 'utf8');
   assert.match(publisher, /jss-clips-source-/);
-  assert.match(publisher, /Source bundles are retained permanently/);
+  assert.match(publisher, /releases\/tags/);
   assert.match(worker, /jss-clips-source-/);
+  assert.match(worker, /githubReleaseUrl/);
 });

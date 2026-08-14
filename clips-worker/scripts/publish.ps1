@@ -54,7 +54,9 @@ $stagedLatest = Get-Content (Join-Path $dist 'latest.json') -Raw | ConvertFrom-J
 if ($stagedLatest.version -ne $Version -or $stagedLatest.url -ne $appPackageName -or -not $stagedLatest.signature) {
     throw "dist\latest.json does not describe staged update $Version."
 }
+& node (Join-Path $projectRoot 'scripts\publish-github-release.mjs') $Version
+if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publishing failed; R2 was left unchanged.' }
 & node (Join-Path $workerRoot 'scripts\publish-r2.mjs') $dist $Bucket $Channel $Version
 if ($LASTEXITCODE -ne 0) { throw 'R2 publishing failed.' }
 
-Write-Host "Published Clips $Version to $Channel channel(s) in R2."
+Write-Host "Published Clips $Version to GitHub Releases and $Channel metadata to R2."

@@ -1,6 +1,7 @@
 const RELEASE_PREFIX = "releases/";
 const VERSIONED_ARTIFACT =
   /^(?:jss-clips-(?:update|setup|portable)-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-(?:x64|arm64)\.(?:exe|exe\.blockmap)|jss-clips-app-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-x64\.zip|jss-clips-source-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.zip)$/;
+const GITHUB_REPOSITORY = "jssfi/clips";
 
 function artifactName(pathname: string): { name: string; key: string } | null {
   let decoded: string;
@@ -28,6 +29,29 @@ function cacheControl(name: string): string {
   return name === "latest.yml" || name === "latest.json"
     ? "no-store, max-age=0"
     : "public, max-age=31536000, immutable";
+}
+
+function githubReleaseUrl(name: string): string | null {
+  if (!VERSIONED_ARTIFACT.test(name)) return null;
+  const version = (
+    /^jss-clips-(?:update|setup|portable)-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)-(?:x64|arm64)\.exe(?:\.blockmap)?$/.exec(name)
+    || /^jss-clips-app-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)-x64\.zip$/.exec(name)
+    || /^jss-clips-source-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.zip$/.exec(name)
+  )?.[1];
+  return version
+    ? `https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/${encodeURIComponent(name)}`
+    : null;
+}
+
+function githubRedirect(name: string): Response {
+  const location = githubReleaseUrl(name);
+  return location
+    ? new Response(null, { status: 307, headers: {
+      "Cache-Control": "public, max-age=300",
+      Location: location,
+      "X-Content-Type-Options": "nosniff"
+    } })
+    : new Response("Not Found", { status: 404 });
 }
 
 function parseRange(value: string, size: number): R2Range | null {
@@ -77,7 +101,7 @@ async function serve(request: Request, bucket: R2Bucket): Promise<Response> {
 
   if (request.method === "HEAD") {
     const object = await bucket.head(key);
-    if (!object) return new Response("Not Found", { status: 404 });
+    if (!object) return githubRedirect(name);
     const headers = commonHeaders(name, object);
     headers.set("Content-Length", String(object.size));
     return new Response(null, { status: 200, headers });
@@ -87,7 +111,7 @@ async function serve(request: Request, bucket: R2Bucket): Promise<Response> {
   const rangeHeader = request.headers.get("Range");
   if (rangeHeader) {
     const metadata = await bucket.head(key);
-    if (!metadata) return new Response("Not Found", { status: 404 });
+    if (!metadata) return githubRedirect(name);
     requestedRange = parseRange(rangeHeader, metadata.size) ?? undefined;
     if (!requestedRange) {
       const headers = new Headers({ "Accept-Ranges": "bytes" });
@@ -100,7 +124,7 @@ async function serve(request: Request, bucket: R2Bucket): Promise<Response> {
     onlyIf: request.headers,
     ...(requestedRange ? { range: requestedRange } : {})
   });
-  if (!object) return new Response("Not Found", { status: 404 });
+  if (!object) return githubRedirect(name);
   const headers = commonHeaders(name, object);
   if (!("body" in object)) {
     const notModified = request.headers.has("If-None-Match")
@@ -129,7 +153,7 @@ async function serve(request: Request, bucket: R2Bucket): Promise<Response> {
   return new Response(object.body, { status, headers });
 }
 
-export { artifactName, cacheControl, parseRange, serve };
+export { artifactName, cacheControl, githubReleaseUrl, parseRange, serve };
 
 export default {
   async fetch(request, env): Promise<Response> {
