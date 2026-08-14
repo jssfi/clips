@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Reliable release archiving",
+    "changes": [
+      "Historical corresponding-source archives can now be safely verified on GitHub before their redundant R2 copies are removed."
+    ]
+  },
+  {
     "version": "0.4-ab85dde5",
     "title": "Permanent release downloads",
     "changes": [

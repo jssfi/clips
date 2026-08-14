@@ -1,10 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { Readable } from 'node:stream';
-import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
+const require = createRequire(path.join(root, 'clips-worker', 'package.json'));
+const { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, S3Client } = require('@aws-sdk/client-s3');
 const repository = process.env.CLIPS_GITHUB_REPOSITORY || 'jssfi/clips';
 const deleteVerified = process.argv.includes('--delete-verified');
 
