@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Faster release delivery",
+    "changes": [
+      "Release builds and uploads now run independent work concurrently, substantially reducing the time required to ship fixes and new features."
+    ]
+  },
+  {
     "version": "0.4.1",
     "title": "New game detection and permanent releases",
     "changes": [

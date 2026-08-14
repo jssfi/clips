@@ -9,3 +9,7 @@ test('stable releases omit the zero patch in the UI', () => {
 test('nightly releases display their source commit hash', () => {
   assert.equal(displayVersion('0.3.1-nightly.42.a1b2c3d4'), '0.3-a1b2c3d4');
 });
+
+test('next-minor nightlies display their development sequence', () => {
+  assert.equal(displayVersion('0.5.0-nightly.1.a1b2c3d4'), '0.5-nightly.1');
+});

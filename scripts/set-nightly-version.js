@@ -15,14 +15,19 @@ const hash = git('rev-parse', '--short=8', 'HEAD').toLowerCase();
 const commitCount = Number(git('rev-list', '--count', 'HEAD'));
 if (!Number.isSafeInteger(commitCount) || commitCount < 1) throw new Error('Could not determine the Git commit count.');
 
-const internalVersion = `${base}.1-nightly.${commitCount}.${hash}`;
-const displayVersion = `${base}-${hash}`;
 const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 const packageLock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
 const changelog = JSON.parse(fs.readFileSync(changelogPath, 'utf8'));
 if (!changelog[0] || changelog[0].version !== 'next') {
   throw new Error('The first changelog entry must use "version": "next" before generating a nightly.');
 }
+const previousSequences = changelog
+  .map(entry => new RegExp(`^${base.replace('.', '\\.')}\\-nightly\\.(\\d+)$`).exec(String(entry.version || '')))
+  .filter(Boolean)
+  .map(match => Number(match[1]));
+const nightlySequence = Math.max(0, ...previousSequences) + 1;
+const internalVersion = `${base}.0-nightly.${nightlySequence}.${hash}`;
+const displayVersion = `${base}-nightly.${nightlySequence}`;
 
 packageJson.version = internalVersion;
 packageLock.version = internalVersion;
