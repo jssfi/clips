@@ -71,7 +71,9 @@ if ($WaitForArchive) {
     $stdout = Join-Path $logRoot "$safeVersion.out.log"
     $stderr = Join-Path $logRoot "$safeVersion.err.log"
     $node = (Get-Command node -ErrorAction Stop).Source
-    $process = Start-Process -FilePath $node -ArgumentList @($archiveScript, $dist, $Bucket, $Channel, $Version) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+    # The child owns its log handles. Start-Process redirection makes PowerShell
+    # wait for those handles to close, accidentally turning archival synchronous.
+    $process = Start-Process -FilePath $node -ArgumentList @($archiveScript, $dist, $Bucket, $Channel, $Version, $stdout, $stderr) -WorkingDirectory $projectRoot -WindowStyle Hidden -PassThru
     Write-Host "Clips $Version is live from R2. GitHub archival continues in background (PID $($process.Id))."
     Write-Host "Archive logs: $stdout"
 }
