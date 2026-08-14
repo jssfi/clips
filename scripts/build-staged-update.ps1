@@ -24,7 +24,7 @@ if (-not (Test-Path -LiteralPath $sevenZip -PathType Leaf)) {
 Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
 Push-Location $source
 try {
-    & $sevenZip a -tzip -mx=6 $archive '.\*'
+    & $sevenZip a -tzip -mx=1 $archive '.\*'
     if ($LASTEXITCODE -ne 0) { throw "7-Zip failed with exit code $LASTEXITCODE." }
 } finally {
     Pop-Location
