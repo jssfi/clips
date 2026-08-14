@@ -83,3 +83,36 @@ test('high-frequency microphone meter polling stays out of the log', () => {
   controller.request('microphoneLevel', {}, 1).catch(() => {});
   assert.equal(events.length, 0);
 });
+
+test('a timed out request terminates the unresponsive capture engine', async () => {
+  const controller = new ObsController();
+  let killed = false;
+  controller.connected = true;
+  controller.child = {
+    killed: false,
+    kill: () => { killed = true; },
+    stdin: { writable: true, write: () => {} }
+  };
+
+  await assert.rejects(controller.request('start', {}, 1), /timed out while handling start/);
+
+  assert.equal(killed, true);
+  assert.equal(controller.child, null);
+  assert.equal(controller.connected, false);
+  assert.equal(controller.pending.size, 0);
+});
+
+test('a timed out request rejects other requests queued behind it', async () => {
+  const controller = new ObsController();
+  controller.connected = true;
+  controller.child = {
+    killed: false,
+    kill: () => {},
+    stdin: { writable: true, write: () => {} }
+  };
+
+  const blocked = controller.request('status', {}, 1000);
+  const timedOut = controller.request('start', {}, 1);
+  await assert.rejects(timedOut, /timed out while handling start/);
+  await assert.rejects(blocked, /timed out while handling start/);
+});

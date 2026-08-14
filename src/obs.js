@@ -31,7 +31,17 @@ class ObsController {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`The Clips capture engine timed out while handling ${command}.`));
+        const failure = new Error(`The Clips capture engine timed out while handling ${command}.`);
+        reject(failure);
+
+        // capture-host handles requests on one thread. If one libobs call wedges,
+        // later requests cannot overtake it, so leaving the process alive only
+        // produces an endless sequence of timeouts. Mark it offline immediately
+        // and terminate it so the next capture attempt starts with a clean host.
+        const child = this.child;
+        this.logger?.error?.('capture engine became unresponsive', { id, command });
+        this.handleExit(failure);
+        if (child && !child.killed) child.kill?.();
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timeout });
       this.child.stdin.write(`${JSON.stringify({ id, command, ...data })}\n`, error => {

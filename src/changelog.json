@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Capture recovers after encoder failures",
+    "changes": [
+      "Clips now replaces an unresponsive capture engine after a GPU encoder failure, allowing recording to restart instead of repeatedly timing out."
+    ]
+  },
+  {
     "version": "0.4-dc97d8a6",
     "title": "Browser focus works in Helium",
     "changes": [
