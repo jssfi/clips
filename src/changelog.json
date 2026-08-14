@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.4-15eea38b",
     "title": "Reliable release archiving",
     "changes": [
       "Historical corresponding-source archives can now be safely verified on GitHub before their redundant R2 copies are removed."
