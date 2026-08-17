@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.17",
     "title": "Staged updater diagnostic test",
     "changes": [
       "This release exercises the instrumented staged updater from the previous nightly without changing recording behavior."
