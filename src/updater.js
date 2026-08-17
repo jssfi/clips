@@ -269,17 +269,43 @@ async function cleanupStalePreparations(versions, { protectedDirectories = [] } 
 
 async function renameWithRetries(source, destination, {
   rename = fs.promises.rename,
-  wait = delay => new Promise(resolve => setTimeout(resolve, delay))
+  wait = delay => new Promise(resolve => setTimeout(resolve, delay)),
+  attempts = 20
 } = {}) {
-  for (let attempt = 0; attempt <= 20; attempt += 1) {
+  for (let attempt = 0; attempt <= attempts; attempt += 1) {
     try {
       await rename(source, destination);
       return;
     } catch (error) {
-      if (!RETRYABLE_FILE_ERRORS.has(error?.code) || attempt === 20) throw error;
+      if (!RETRYABLE_FILE_ERRORS.has(error?.code) || attempt === attempts) throw error;
       await wait(Math.min(500, 50 * (attempt + 1)));
     }
   }
+}
+
+async function promotePreparedDirectory(source, destination, {
+  rename = fs.promises.rename,
+  copy = fs.promises.cp,
+  remove = removeWithRetries,
+  stat = fs.promises.stat,
+  wait = delay => new Promise(resolve => setTimeout(resolve, delay))
+} = {}) {
+  try {
+    await renameWithRetries(source, destination, { rename, wait, attempts: 4 });
+    return;
+  } catch (error) {
+    if (!RETRYABLE_FILE_ERRORS.has(error?.code)) throw error;
+  }
+
+  await remove(destination, { recursive: true }).catch(() => {});
+  await copy(source, destination, { recursive: true, force: false, errorOnExist: true });
+  const executable = path.join(destination, APP_EXECUTABLE);
+  const asar = path.join(destination, 'resources', 'app.asar');
+  if ((await stat(executable)).size <= 0 || (await stat(asar)).size <= 0) {
+    await remove(destination, { recursive: true }).catch(() => {});
+    throw new Error('The promoted update is incomplete.');
+  }
+  await remove(source, { recursive: true }).catch(() => {});
 }
 
 async function cleanupInvalidPreparedVersions(versions, { protectedDirectories = [] } = {}) {
@@ -469,7 +495,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
         sha512: metadata.sha512,
         preparedAt: new Date().toISOString()
       }, null, 2));
-      await renameWithRetries(destination, finalDestination);
+      await promotePreparedDirectory(destination, finalDestination);
       prepared = true;
       return {
         version: metadata.version,
@@ -569,6 +595,7 @@ module.exports = {
   downloadUpdateArchive,
   withFetchTimeout,
   renameWithRetries,
+  promotePreparedDirectory,
   updateRelaunchArgs,
   redirectToActiveVersion,
   createStagedUpdater

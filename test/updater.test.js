@@ -19,6 +19,7 @@ const {
   downloadUpdateArchive,
   withFetchTimeout,
   renameWithRetries,
+  promotePreparedDirectory,
   updateRelaunchArgs
 } = require('../src/updater');
 
@@ -259,4 +260,18 @@ test('prepared update finalization retries transient Windows directory locks', a
 
   assert.equal(attempts, 3);
   assert.deepEqual(delays, [50, 100]);
+});
+
+test('prepared update promotion copies and verifies when Windows keeps the directory locked', async () => {
+  const copied = [];
+  const removed = [];
+  await promotePreparedDirectory('preparing', 'final', {
+    rename: async () => { throw Object.assign(new Error('locked'), { code: 'EPERM' }); },
+    wait: async () => {},
+    copy: async (...args) => { copied.push(args); },
+    stat: async file => ({ size: file.endsWith('app.asar') ? 200 : 100 }),
+    remove: async name => { removed.push(name); }
+  });
+  assert.equal(copied.length, 1);
+  assert.deepEqual(removed, ['final', 'preparing']);
 });
