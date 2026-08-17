@@ -44,6 +44,9 @@ async function main() {
       await fs.promises.writeFile(path.join(root, 'jss clips.exe'), directory);
       await fs.promises.writeFile(path.join(root, 'resources', 'app.asar'), directory);
     }
+    await fs.promises.writeFile(path.join(versionRoot, activeDirectory, '.clips-update.json'), JSON.stringify({
+      version: '0.1.10'
+    }));
     await fs.promises.writeFile(path.join(versionRoot, rollbackDirectory, '.clips-update.json'), JSON.stringify({
       version: '0.1.9'
     }));

@@ -1,6 +1,6 @@
 [
   {
-    "version": "0.5-nightly.18",
+    "version": "next",
     "title": "Recovery and release safeguards",
     "changes": [
       "Clips now rolls back automatically when an updated application cannot complete its first healthy startup, and validates the full staged application before launching it.",
