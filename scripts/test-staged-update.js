@@ -52,6 +52,8 @@ async function main() {
     }));
     await fs.promises.mkdir(path.join(versionRoot, stalePreparation), { recursive: true });
     await fs.promises.writeFile(path.join(versionRoot, stalePreparation, 'partial'), 'stale');
+    const abandonedAt = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await fs.promises.utimes(path.join(versionRoot, stalePreparation), abandonedAt, abandonedAt);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const states = [];
     let relaunchOptions = null;
