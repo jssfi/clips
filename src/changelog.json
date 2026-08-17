@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.4",
     "title": "Updates that fail safely",
     "changes": [
       "Update requests now time out cleanly, and interrupted preparations can no longer displace a working rollback version.",
