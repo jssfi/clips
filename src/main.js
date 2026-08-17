@@ -9,7 +9,7 @@ const { promisify } = require('util');
 const { ObsController } = require('./obs');
 const buildInfo = require('./build-info.json');
 const { RUNTIME_VERSION, runtimeRoot, isRuntimeReady, ensureRuntimeInstalled } = require('./runtime');
-const { redirectToActiveVersion, createStagedUpdater } = require('./updater');
+const { createInstallerUpdater } = require('./installer-updater');
 const { createTrayController } = require('./tray-controller');
 const { MPV_QUIT_ON_FULLSCREEN_EXIT_SCRIPT, mpvFullscreenArgs } = require('./mpv-fullscreen');
 const { createLogger } = require('./logger');
@@ -26,8 +26,7 @@ const changelog = require('./changelog.json');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
 app.setPath('userData', path.join(app.getPath('appData'), 'Clips'));
-const redirectedToActiveVersion = redirectToActiveVersion(app);
-const gotSingleInstanceLock = !redirectedToActiveVersion && app.requestSingleInstanceLock();
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) app.quit();
 
 const execFileAsync = promisify(execFile);
@@ -67,7 +66,7 @@ let updateState = { status: 'idle', version: app.getVersion(), percent: 0, messa
 let updateCheckTimer = null;
 let updateCheckTimeout = null;
 let updateConfigurationGeneration = 0;
-let stagedUpdater = null;
+let installerUpdater = null;
 let runtimeSetupPromise = Promise.resolve();
 const logger = createLogger({ directory: path.join(app.getPath('userData'), 'logs') });
 const trayController = createTrayController({ getWindow: () => win });
@@ -1068,7 +1067,8 @@ function configureUpdates() {
   clearInterval(updateCheckTimer);
   updateCheckTimeout = null;
   updateCheckTimer = null;
-  stagedUpdater = null;
+  installerUpdater?.dispose();
+  installerUpdater = null;
   const generation = ++updateConfigurationGeneration;
   updateState = {
     status: 'idle',
@@ -1093,14 +1093,13 @@ function configureUpdates() {
   const updateUrl = updateFeedUrl();
   if (!updateUrl) return;
   updateState.configured = true;
-  stagedUpdater = createStagedUpdater({
-    app,
+  installerUpdater = createInstallerUpdater({
     feedUrl: updateUrl,
     onState: next => {
       if (generation === updateConfigurationGeneration) setUpdateState(next);
     }
   });
-  const check = () => stagedUpdater.check();
+  const check = () => installerUpdater?.check();
   updateCheckTimeout = setTimeout(check, 3000);
   updateCheckTimer = setInterval(check, 15 * 60 * 1000);
 }
@@ -1309,7 +1308,7 @@ async function installUpdate() {
     app.exit(0);
     return true;
   }
-  return stagedUpdater?.restart(async () => {
+  return installerUpdater?.restart(async () => {
     const capture = await obs.status();
     if (capture.recording || capture.replayBuffer) {
       await obs.stopSession().catch(error => logger.warn('capture stop before update failed', { message: error.message }));
@@ -1321,7 +1320,7 @@ async function installUpdate() {
 
 function checkForUpdates() {
   if (!app.isPackaged || !updateFeedUrl() || ['checking', 'downloading', 'preparing', 'ready'].includes(updateState.status)) return false;
-  stagedUpdater?.check();
+  installerUpdater?.check();
   return true;
 }
 

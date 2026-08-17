@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Classic installer updates restored",
+    "changes": [
+      "Updates once again use the proven NSIS installer download and restart flow instead of custom app-version folders."
+    ]
+  },
+  {
     "version": "0.5-nightly.14",
     "title": "Updater recovery validation",
     "changes": [
