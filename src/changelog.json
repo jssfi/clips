@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.7",
     "title": "Media runtime recovery after interrupted updates",
     "changes": [
       "Clips can now reconcile a stale runtime manifest when an interrupted slim update already installed a verified bundled native component, while continuing to reject unverified runtime corruption."
