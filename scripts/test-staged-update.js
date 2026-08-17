@@ -34,6 +34,24 @@ async function main() {
   try {
     process.env.LOCALAPPDATA = temporaryRoot;
     process.resourcesPath = path.join(projectRoot, 'dist', 'staged', 'win-unpacked', 'resources');
+    const versionRoot = path.join(temporaryRoot, 'jss-clips', 'app-versions');
+    const activeDirectory = '0.1.10.app-running';
+    const rollbackDirectory = '0.1.9.app-rollback';
+    const stalePreparation = '0.1.8.preparing-abandoned';
+    for (const directory of [activeDirectory, rollbackDirectory]) {
+      const root = path.join(versionRoot, directory);
+      await fs.promises.mkdir(path.join(root, 'resources'), { recursive: true });
+      await fs.promises.writeFile(path.join(root, 'jss clips.exe'), directory);
+      await fs.promises.writeFile(path.join(root, 'resources', 'app.asar'), directory);
+    }
+    await fs.promises.writeFile(path.join(versionRoot, rollbackDirectory, '.clips-update.json'), JSON.stringify({
+      version: '0.1.9'
+    }));
+    await fs.promises.writeFile(path.join(temporaryRoot, 'jss-clips', 'active-app.json'), JSON.stringify({
+      version: '0.1.10', directory: activeDirectory
+    }));
+    await fs.promises.mkdir(path.join(versionRoot, stalePreparation), { recursive: true });
+    await fs.promises.writeFile(path.join(versionRoot, stalePreparation, 'partial'), 'stale');
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const states = [];
     let relaunchOptions = null;
@@ -51,10 +69,12 @@ async function main() {
     assert.equal(await updater.check(), true);
     assert.equal(states.at(-1).status, 'ready');
     assert.ok(states.some(state => state.status === 'preparing'));
-    const versionRoot = path.join(temporaryRoot, 'jss-clips', 'app-versions');
     const versionDirectories = fs.readdirSync(versionRoot)
       .filter(name => name.startsWith(`${metadata.version}.app-`));
     assert.equal(versionDirectories.length, 1);
+    assert.equal(fs.existsSync(path.join(versionRoot, activeDirectory, 'jss clips.exe')), true);
+    assert.equal(fs.existsSync(path.join(versionRoot, rollbackDirectory, 'jss clips.exe')), true);
+    assert.equal(fs.existsSync(path.join(versionRoot, stalePreparation)), false);
     const preparedExecutable = path.join(versionRoot, versionDirectories[0], 'jss clips.exe');
     assert.ok(fs.existsSync(preparedExecutable));
     assert.equal(await updater.restart(), true);

@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Updates that finish safely on Windows",
+    "changes": [
+      "Update preparation no longer races its own stale-file cleanup, and final installation retries short-lived Windows file locks.",
+      "Release testing now protects the active build, rollback build, and in-progress update together while exercising locked-directory recovery."
+    ]
+  },
+  {
     "version": "0.5-nightly.5",
     "title": "Reliable media startup after updates",
     "changes": [

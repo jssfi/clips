@@ -249,17 +249,37 @@ async function removeWithRetries(target, { recursive = false } = {}) {
   }
 }
 
-async function cleanupStalePreparations(versions) {
+async function cleanupStalePreparations(versions, { protectedDirectories = [] } = {}) {
   let entries;
   try {
     entries = await fs.promises.readdir(versions, { withFileTypes: true });
   } catch {
     return;
   }
-  const stale = entries.filter(entry => entry.isDirectory() && isPreparationDirectory(entry.name));
+  const protectedNames = new Set(protectedDirectories.filter(Boolean));
+  const stale = entries.filter(entry => (
+    entry.isDirectory()
+    && isPreparationDirectory(entry.name)
+    && !protectedNames.has(entry.name)
+  ));
   await Promise.allSettled(stale.map(entry => (
     removeWithRetries(path.join(versions, entry.name), { recursive: true })
   )));
+}
+
+async function renameWithRetries(source, destination, {
+  rename = fs.promises.rename,
+  wait = delay => new Promise(resolve => setTimeout(resolve, delay))
+} = {}) {
+  for (let attempt = 0; attempt <= 20; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      if (!RETRYABLE_FILE_ERRORS.has(error?.code) || attempt === 20) throw error;
+      await wait(Math.min(500, 50 * (attempt + 1)));
+    }
+  }
 }
 
 async function cleanupInvalidPreparedVersions(versions, { protectedDirectories = [] } = {}) {
@@ -419,7 +439,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     let prepared = false;
     await fs.promises.mkdir(downloads, { recursive: true });
     await fs.promises.mkdir(versions, { recursive: true });
-    cleanupStalePreparations(versions).catch(() => {});
+    await cleanupStalePreparations(versions, { protectedDirectories: [preparationName] });
 
     try {
       let lastPercent = -1;
@@ -449,7 +469,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
         sha512: metadata.sha512,
         preparedAt: new Date().toISOString()
       }, null, 2));
-      await fs.promises.rename(destination, finalDestination);
+      await renameWithRetries(destination, finalDestination);
       prepared = true;
       return {
         version: metadata.version,
@@ -538,6 +558,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
 module.exports = {
   compareVersions,
   cleanupOldVersionDirectories,
+  cleanupStalePreparations,
   cleanupInvalidPreparedVersions,
   isPreparationDirectory,
   isVersionDirectory,
@@ -547,6 +568,7 @@ module.exports = {
   downloadRanges,
   downloadUpdateArchive,
   withFetchTimeout,
+  renameWithRetries,
   updateRelaunchArgs,
   redirectToActiveVersion,
   createStagedUpdater

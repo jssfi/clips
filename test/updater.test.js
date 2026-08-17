@@ -8,6 +8,7 @@ const { signMetadata } = require('../scripts/update-signature');
 const {
   compareVersions,
   cleanupOldVersionDirectories,
+  cleanupStalePreparations,
   cleanupInvalidPreparedVersions,
   isPreparationDirectory,
   isVersionDirectory,
@@ -17,6 +18,7 @@ const {
   downloadRanges,
   downloadUpdateArchive,
   withFetchTimeout,
+  renameWithRetries,
   updateRelaunchArgs
 } = require('../src/updater');
 
@@ -228,4 +230,33 @@ test('invalid-package cleanup never removes an active or running version directo
 
   assert.equal(fs.existsSync(path.join(versions, protectedName)), true);
   assert.equal(fs.existsSync(path.join(versions, unprotectedName)), false);
+});
+
+test('stale preparation cleanup cannot delete the update currently being prepared', async t => {
+  const versions = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-preparation-cleanup-'));
+  t.after(() => fs.rmSync(versions, { recursive: true, force: true }));
+  const current = '0.5.0-nightly.6.deadbeef.preparing-current';
+  const stale = '0.5.0-nightly.5.cafebabe.preparing-stale';
+  fs.mkdirSync(path.join(versions, current));
+  fs.mkdirSync(path.join(versions, stale));
+
+  await cleanupStalePreparations(versions, { protectedDirectories: [current] });
+
+  assert.equal(fs.existsSync(path.join(versions, current)), true);
+  assert.equal(fs.existsSync(path.join(versions, stale)), false);
+});
+
+test('prepared update finalization retries transient Windows directory locks', async () => {
+  let attempts = 0;
+  const delays = [];
+  await renameWithRetries('preparing', 'final', {
+    rename: async () => {
+      attempts += 1;
+      if (attempts < 3) throw Object.assign(new Error('locked'), { code: 'EPERM' });
+    },
+    wait: async delay => { delays.push(delay); }
+  });
+
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [50, 100]);
 });
