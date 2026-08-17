@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.5",
     "title": "Reliable media startup after updates",
     "changes": [
       "Update cleanup now preserves the active and currently running application package, preventing media runtime files from disappearing during startup."
