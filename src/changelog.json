@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.3",
     "title": "Safer installs and capture recovery",
     "changes": [
       "Fresh installers now include the complete browser interface.",
