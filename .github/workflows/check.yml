@@ -2,6 +2,8 @@ name: Check
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
 
 jobs:
@@ -15,6 +17,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Pin npm used by the lockfile
+        run: npm install --global npm@11.17.0
       - run: npm ci
       - run: npm ci --prefix clips-worker
       - run: npm ci --prefix legacy/update-worker

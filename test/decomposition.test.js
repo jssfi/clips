@@ -22,4 +22,7 @@ test('standard checks use the isolated Worker checker', () => {
   const checker = fs.readFileSync(path.join(root, 'scripts', 'check-workers.mjs'), 'utf8');
   assert.match(checker, /mkdtemp/);
   assert.match(checker, /CLIPS_HERMETIC_CHECK: '1'/);
+  const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'check.yml'), 'utf8');
+  assert.match(workflow, /push:\s*\n\s+branches:\s*\n\s+- '\*\*'/);
+  assert.match(workflow, /npm install --global npm@11\.17\.0/);
 });

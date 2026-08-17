@@ -140,14 +140,28 @@ async function getRef(api, repository, tag, required = true) {
   return response.json();
 }
 
+async function mapConcurrent(items, limit, operation) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await operation(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
 async function preflight(api, repository, plan) {
-  for (const item of plan) {
+  await mapConcurrent(plan, 8, async item => {
     item.oldRef = await getRef(api, repository, item.oldTag);
     item.newRef = await getRef(api, repository, item.newTag, false);
     if (item.newRef && item.newRef.object.sha !== item.oldRef.object.sha) {
       throw new Error(`Destination ${item.newTag} points to ${item.newRef.object.sha}, not ${item.oldRef.object.sha}.`);
     }
-  }
+  });
 }
 
 async function applyPlan(api, repository, plan, log) {
@@ -192,19 +206,21 @@ async function verifyMigratedState(api, repository, releases) {
   const remaining = buildPlan(releases);
   if (remaining.length) throw new Error(`${remaining.length} legacy nightly release tag(s) still require migration.`);
   const migrated = releases.filter(release => release.prerelease && SORTABLE_NIGHTLY.test(release.tag_name));
-  for (const release of migrated) {
+  let retainedLegacyAliases = 0;
+  await mapConcurrent(migrated, 8, async release => {
     const match = SORTABLE_NIGHTLY.exec(release.tag_name);
     const oldTag = `v${match[1]}.${match[2]}.${match[3]}-nightly.${Number(match[4])}.${match[5]}`;
     const [oldRef, newRef] = await Promise.all([
-      getRef(api, repository, oldTag),
+      getRef(api, repository, oldTag, false),
       getRef(api, repository, release.tag_name)
     ]);
-    if (oldRef.object.sha !== newRef.object.sha) {
+    if (oldRef && oldRef.object.sha !== newRef.object.sha) {
       throw new Error(`${oldTag} and ${release.tag_name} do not point to the same Git object.`);
     }
-  }
+    if (oldRef) retainedLegacyAliases += 1;
+  });
   assertSortableTags(releases.map(release => release.tag_name));
-  return migrated;
+  return { migrated, retainedLegacyAliases };
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -212,9 +228,9 @@ async function main(argv = process.argv.slice(2)) {
   const api = createClient(credential(options.apply));
   const releases = await listReleases(api, options.repository);
   if (options.verifyOnly) {
-    const migrated = await verifyMigratedState(api, options.repository, releases);
-    console.log(`Verified ${migrated.length} migrated release(s): every legacy alias remains and fixed-width tags sort numerically.`);
-    return migrated;
+    const verified = await verifyMigratedState(api, options.repository, releases);
+    console.log(`Verified ${verified.migrated.length} sortable release(s), including ${verified.retainedLegacyAliases} retained legacy aliases.`);
+    return verified;
   }
   const plan = buildPlan(releases);
   await preflight(api, options.repository, plan);
