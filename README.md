@@ -6,6 +6,8 @@ Interactive UI demo at: https://clips.jss.fi/app/
 
 Download the latest stable version at: https://clips.jss.fi/download/
 
+Browse all stable and nightly releases at: https://github.com/jssfi/clips/releases
+
 Why and how I built this are documented on Hack Club: https://stardance.hackclub.com/projects/45261
 
 ![Clips recording library](docs/screenshots/library.png)
