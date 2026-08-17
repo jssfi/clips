@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Updater recovery validation",
+    "changes": [
+      "This release validates the repaired staged-update path introduced in the previous nightly, without changing recording behavior."
+    ]
+  },
+  {
     "version": "0.5-nightly.13",
     "title": "Update preparation protected from cleanup",
     "changes": [
