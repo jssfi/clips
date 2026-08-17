@@ -262,11 +262,16 @@ async function cleanupStalePreparations(versions) {
   )));
 }
 
-async function cleanupInvalidPreparedVersions(versions) {
+async function cleanupInvalidPreparedVersions(versions, { protectedDirectories = [] } = {}) {
   let entries;
   try { entries = await fs.promises.readdir(versions, { withFileTypes: true }); }
   catch { return; }
-  await Promise.allSettled(entries.filter(entry => entry.isDirectory() && entry.name.includes('.app-')).map(async entry => {
+  const protectedNames = new Set(protectedDirectories.filter(Boolean));
+  await Promise.allSettled(entries.filter(entry => (
+    entry.isDirectory()
+    && entry.name.includes('.app-')
+    && !protectedNames.has(entry.name)
+  )).map(async entry => {
     const directory = path.join(versions, entry.name);
     try {
       const marker = JSON.parse(await fs.promises.readFile(path.join(directory, '.clips-update.json'), 'utf8'));
@@ -322,7 +327,7 @@ async function cleanupOldVersions(app) {
   if (runningParent.toLowerCase() === path.resolve(versions).toLowerCase()) {
     protectedDirectories.push(runningDirectory);
   }
-  await cleanupInvalidPreparedVersions(versions);
+  await cleanupInvalidPreparedVersions(versions, { protectedDirectories });
   await cleanupOldVersionDirectories(versions, { protectedDirectories, retain: 2 });
 }
 

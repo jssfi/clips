@@ -213,3 +213,19 @@ test('incomplete final-looking update directories are removed before retention',
   await cleanupInvalidPreparedVersions(versions);
   assert.equal(fs.existsSync(invalid), false);
 });
+
+test('invalid-package cleanup never removes an active or running version directory', async t => {
+  const versions = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-protected-version-'));
+  t.after(() => fs.rmSync(versions, { recursive: true, force: true }));
+  const protectedName = '0.5.0-nightly.4.deadbeef.app-running';
+  const unprotectedName = '0.5.0-nightly.3.cafebabe.app-abandoned';
+  fs.mkdirSync(path.join(versions, protectedName));
+  fs.mkdirSync(path.join(versions, unprotectedName));
+
+  await cleanupInvalidPreparedVersions(versions, {
+    protectedDirectories: [protectedName]
+  });
+
+  assert.equal(fs.existsSync(path.join(versions, protectedName)), true);
+  assert.equal(fs.existsSync(path.join(versions, unprotectedName)), false);
+});
