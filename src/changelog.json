@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.9",
     "title": "Updates that survive persistent Windows locks",
     "changes": [
       "Update preparation now falls back to a verified directory copy when Windows keeps the extracted update folder locked too long to rename."
