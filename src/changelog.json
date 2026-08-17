@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.6",
     "title": "Updates that finish safely on Windows",
     "changes": [
       "Update preparation no longer races its own stale-file cleanup, and final installation retries short-lived Windows file locks.",
