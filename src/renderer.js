@@ -141,6 +141,14 @@ const values = () => ({
   nightlyUpdates: $("nightly-updates").checked,
   telemetryMode: $("telemetry-mode").value,
 });
+function restoreMicrophoneSelection(selectedId) {
+  const select = $("microphone");
+  const wanted = String(selectedId || "disabled");
+  if (![...select.options].some(option => option.value === wanted)) {
+    select.add(new Option(wanted === "disabled" ? "Off" : "Saved microphone (loading…)", wanted));
+  }
+  select.value = wanted;
+}
 function render(s, fill = false) {
   state = s;
   const updateReady = s.update?.status === "ready";
@@ -325,6 +333,7 @@ function render(s, fill = false) {
     $("resolution").value = s.settings.obsResolution;
     $("fps").value = s.settings.obsFps;
     $("format").value = s.settings.obsFormat;
+    restoreMicrophoneSelection(s.settings.microphoneDeviceId);
     $("microphone-volume").value = s.settings.microphoneVolumePercent ?? 100;
     $("microphone-volume-value").textContent = `${s.settings.microphoneVolumePercent ?? 100}%`;
     $("microphone-noise-gate").value = s.settings.microphoneNoiseGateDb ?? -40;
@@ -435,7 +444,8 @@ async function refreshMicrophones(selectedId) {
     select.value = wanted;
     select.disabled = false;
   } catch {
-    select.disabled = true;
+    restoreMicrophoneSelection(wanted);
+    select.disabled = false;
   }
 }
 let shortcutInput = $("hotkey");

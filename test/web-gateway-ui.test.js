@@ -56,6 +56,13 @@ test('live settings synchronization does not rediscover microphones on every ren
   assert.match(renderer, /JSON\.stringify\(s\.settings\) !== renderedSettingsJson/);
 });
 
+test('saved microphone selection is restored before asynchronous device discovery', () => {
+  const renderer = source('src/renderer.js');
+  assert.match(renderer, /restoreMicrophoneSelection\(s\.settings\.microphoneDeviceId\)/);
+  assert.match(renderer, /Saved microphone \(loading…\)/);
+  assert.doesNotMatch(renderer, /catch \{\s*select\.disabled = true/);
+});
+
 test('opening the browser UI reuses a connected tab', () => {
   const main = source('src/main.js');
   const web = source('clips-worker/src/web.js');
