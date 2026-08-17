@@ -28,22 +28,22 @@ function recording(root, day, name, contents = 'video') {
   return file;
 }
 
-test('recording library lists and enriches recent and archived recordings', () => {
+test('recording library lists and enriches recent and archived recordings', async () => {
   const { recordingsFolder, metadata, library } = fixture();
   const recent = recording(recordingsFolder, '2026-08-17', 'Replay 1.mkv');
   recording(recordingsFolder, '2026-08-16', 'Recording.mp4', 'longer video');
   metadata.set(recent, { title: 'Last fight', tags: ['ranked'], game: 'Arena' });
   library.setFavorite(recent, true);
 
-  assert.deepEqual(library.recentRecordings().map(item => ({ name: item.name, title: item.title, kind: item.kind, favorite: item.favorite })), [
+  assert.deepEqual((await library.recentRecordings()).map(item => ({ name: item.name, title: item.title, kind: item.kind, favorite: item.favorite })), [
     { name: 'Replay 1.mkv', title: 'Last fight', kind: 'replay', favorite: true }
   ]);
-  assert.deepEqual(library.archivedRecordings().map(item => ({ name: item.name, day: item.day, bytes: item.bytes })), [
+  assert.deepEqual((await library.archivedRecordings()).map(item => ({ name: item.name, day: item.day, bytes: item.bytes })), [
     { name: 'Recording.mp4', day: '2026-08-16', bytes: 12 }
   ]);
 });
 
-test('age cleanup deletes only expired raw footage and preserves favorites and exports', () => {
+test('age cleanup deletes only expired raw footage and preserves favorites and exports', async () => {
   const { recordingsFolder, library } = fixture();
   const expired = recording(recordingsFolder, '2026-08-14', 'Recording.mkv');
   const favorite = recording(recordingsFolder, '2026-08-14', 'Favorite.mkv');
@@ -52,10 +52,19 @@ test('age cleanup deletes only expired raw footage and preserves favorites and e
   const current = recording(recordingsFolder, '2026-08-16', 'Recording.mkv');
   library.setFavorite(favorite, true);
 
-  library.cleanupStorage(folder => fs.mkdirSync(folder, { recursive: true }));
+  await library.cleanupStorage(folder => fs.mkdirSync(folder, { recursive: true }));
 
   assert.equal(fs.existsSync(expired), false);
   for (const preserved of [favorite, replay, trimmed, current]) assert.equal(fs.existsSync(preserved), true);
+});
+
+test('recording path validation rejects a directory link that escapes the library', { skip: process.platform !== 'win32' }, () => {
+  const { base, recordingsFolder, library } = fixture();
+  const outside = path.join(base, 'outside'); fs.mkdirSync(outside);
+  const recordingPath = recording(outside, '.', 'Recording.mkv');
+  const linkedDay = path.join(recordingsFolder, '2026-08-16');
+  fs.symlinkSync(outside, linkedDay, 'junction');
+  assert.throws(() => library.validatePath(path.join(linkedDay, path.basename(recordingPath))), /no longer exists/);
 });
 
 test('recording path validation rejects missing and outside files', () => {

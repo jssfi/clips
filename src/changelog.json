@@ -1,5 +1,15 @@
 [
   {
+    "version": "next",
+    "title": "Safer, smoother recording libraries",
+    "changes": [
+      "Recording file operations now reject junctions that escape the library, and deleted recordings immediately lose playback access.",
+      "Large libraries are scanned without blocking the app, while automatic cleanup also removes favorites, metadata, and cached thumbnails.",
+      "Capture settings, native player transport, and capture-engine process handling are more resilient to malformed input and rare Windows races.",
+      "Clean Windows CI now exercises application checks and both native hosts."
+    ]
+  },
+  {
     "version": "0.5-nightly.7",
     "title": "Media runtime recovery after interrupted updates",
     "changes": [

@@ -23,6 +23,18 @@ static std::atomic<bool> frameReady{true};
 static std::atomic<int> frameWidth{640};
 static std::atomic<int> frameHeight{360};
 
+static bool writeAll(HANDLE output, const void* data, size_t size) {
+  const auto* cursor = static_cast<const unsigned char*>(data);
+  while (size > 0) {
+    const DWORD chunk = static_cast<DWORD>(size > MAXDWORD ? MAXDWORD : size);
+    DWORD written = 0;
+    if (!WriteFile(output, cursor, chunk, &written, nullptr) || written == 0) return false;
+    cursor += written;
+    size -= written;
+  }
+  return true;
+}
+
 static void respond(long long id, const std::string& body) {
   std::cerr << id << '\t' << body << std::endl;
 }
@@ -108,10 +120,11 @@ static LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wparam, LPA
       if (mpv_render_context_render(renderer, params) >= 0) {
         for (size_t index = 3; index < pixels.size(); index += 4) pixels[index] = 255;
         uint32_t header[] = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<uint32_t>(pixels.size())};
-        DWORD written = 0;
         HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
-        WriteFile(output, header, sizeof(header), &written, nullptr);
-        WriteFile(output, pixels.data(), static_cast<DWORD>(pixels.size()), &written, nullptr);
+        if (!writeAll(output, header, sizeof(header)) || !writeAll(output, pixels.data(), pixels.size())) {
+          running = false;
+          PostMessage(videoWindow, WM_CLOSE, 0, 0);
+        }
       }
     }
     return 0;

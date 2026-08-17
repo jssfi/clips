@@ -116,3 +116,12 @@ test('a timed out request rejects other requests queued behind it', async () => 
   await assert.rejects(timedOut, /timed out while handling start/);
   await assert.rejects(blocked, /timed out while handling start/);
 });
+
+test('an error from a replaced child cannot disconnect the active capture engine', () => {
+  const controller = new ObsController();
+  const stale = {};
+  const active = { stdin: { writable: true } };
+  controller.child = active;
+  controller.handleChildError(stale, new Error('stale'));
+  assert.equal(controller.child, active);
+});

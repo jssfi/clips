@@ -598,7 +598,7 @@ $("scan-audio").onclick = async () => {
   $("audio-process-picker").innerHTML = list
     .map(
       (p) =>
-        `<button data-audio-exe="${escapeHtml(p.name)}">${escapeHtml(p.title)} <span class="muted">${escapeHtml(p.path || `${p.name} Â· protected process`)}</span></button>`,
+        `<button data-audio-exe="${escapeHtml(p.name)}">${escapeHtml(p.title)} <span class="muted">${escapeHtml(p.path || `${p.name} · protected process`)}</span></button>`,
     )
     .join("");
   $("audio-process-picker").classList.remove("hidden");

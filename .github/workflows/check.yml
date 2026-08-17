@@ -1,0 +1,24 @@
+name: Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      CLIPS_HERMETIC_CHECK: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix clips-worker
+      - run: npm ci --prefix legacy/update-worker
+      - run: npm ci --prefix legacy/telemetry-worker
+      - run: npm run check
+      - run: scripts\build-mpv-host.cmd
+      - run: scripts\build-capture-host.cmd

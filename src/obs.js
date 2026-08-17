@@ -97,6 +97,11 @@ class ObsController {
     this.onEvent?.();
   }
 
+  handleChildError(child, error) {
+    if (this.child !== child) return;
+    this.handleExit(error);
+  }
+
   async connect({ executable, runtimeRoot, configRoot, settings }) {
     if (this.connected && this.child) return true;
     if (this.child) await this.disconnect();
@@ -115,7 +120,7 @@ class ObsController {
       this.logger?.capture(chunk);
       if (process.env.CLIPS_CAPTURE_LOG === '1') process.stderr.write(chunk);
     });
-    child.once('error', error => this.handleExit(error));
+    child.once('error', error => this.handleChildError(child, error));
     child.once('exit', (code, signal) => {
       if (this.child !== child) return;
       this.handleExit(new Error(`The Clips capture engine exited (${signal || code}).`));

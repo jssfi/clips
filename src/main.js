@@ -107,7 +107,17 @@ const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 const recordingLibrary = createRecordingLibrary({
   getSettings: () => settings,
   getMetadata: () => libraryMetadata,
-  favoritesPath: () => path.join(app.getPath('userData'), 'favorites.json')
+  favoritesPath: () => path.join(app.getPath('userData'), 'favorites.json'),
+  onDelete: async filePath => {
+    libraryMetadata?.remove(filePath);
+    thumbnailPromises.delete(filePath);
+    for (const [token, entry] of mediaTokens) if (entry.filePath === filePath) mediaTokens.delete(token);
+    try {
+      const stat = await fs.promises.stat(filePath);
+      const key = crypto.createHash('sha256').update(`${filePath}:${stat.size}:${stat.mtimeMs}`).digest('hex').slice(0, 24);
+      await fs.promises.rm(path.join(app.getPath('userData'), 'thumbnail-cache-v2', `${key}.jpg`), { force: true });
+    } catch {}
+  }
 });
 const { isRawRecordingName } = recordingLibrary;
 const cleanupStorage = () => recordingLibrary.cleanupStorage(ensureDirectory);
@@ -230,7 +240,7 @@ async function startSession({ recording = true, replayLengthSeconds = 0 } = {}) 
       clipLengthSeconds: captureSettings.clipLengthSeconds
     });
   }
-  cleanupStorage();
+  await cleanupStorage();
   const wantedAudio = new Set([...(profile.audioExecutables || settings.audioExecutables), ...activeGames].map(name => name.toLowerCase()));
   const outputDirectory = todayFolder();
   const audioApplications = runningApps.filter(app => wantedAudio.has(app.name.toLowerCase()));
@@ -260,9 +270,9 @@ async function startSession({ recording = true, replayLengthSeconds = 0 } = {}) 
 async function startInstantReplay() {
   await startSession({ recording: false, replayLengthSeconds: settings.instantReplayLengthSeconds });
 }
-function finalizeSessionMetadata() {
+async function finalizeSessionMetadata() {
   if (sessionMarkers.length || sessionGame) {
-    const candidates = recentRecordings().filter(item => item.kind === 'recording').sort((a, b) => b.modified.localeCompare(a.modified));
+    const candidates = (await recentRecordings()).filter(item => item.kind === 'recording').sort((a, b) => b.modified.localeCompare(a.modified));
     if (candidates[0]) libraryMetadata.update(candidates[0].path, { markers: sessionMarkers, game: sessionGame });
   }
   sessionMarkers = []; sessionStartedAt = 0; sessionGame = '';
@@ -835,7 +845,7 @@ Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object {
 }
 async function monitor() {
   try {
-    cleanupStorage();
+    await cleanupStorage();
     const running = await processes();
     runningApps = running;
     const candidates = updateCandidateHistory(
@@ -870,7 +880,7 @@ async function monitor() {
         stopTimer = null;
         if (!activeGames.length) {
           await obs.stopSession().catch(setError);
-          finalizeSessionMetadata();
+          await finalizeSessionMetadata();
           sessionDate = '';
           if (settings.instantReplay) await startInstantReplay().catch(setError);
           else await obs.disconnect().catch(() => {});
@@ -969,7 +979,7 @@ async function tryConnect(captureSettings = settings) {
   return connectPromise;
 }
 async function state() {
-  const recordings = recentRecordings(); const archived = archivedRecordings();
+  const [recordings, archived] = await Promise.all([recentRecordings(), archivedRecordings()]);
   return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings, archivedRecordings: archived,
     sessionMarkers, storage: storageInsights(settings.recordingsFolder, [...recordings, ...archived]), lastError, lastClip,
     captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: displayVersion(app.getVersion()), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()), changelog }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState };
@@ -1266,11 +1276,11 @@ function resolveGameCandidate(add) {
 }
 async function saveClip() {
   try {
-    const before = new Set(recentRecordings().map(item => item.path));
+    const before = new Set((await recentRecordings()).map(item => item.path));
     await obs.saveClip();
     let savedReplay = null;
     for (let attempt = 0; attempt < 10 && !savedReplay; attempt++) {
-      savedReplay = recentRecordings().find(item => item.kind === 'replay' && !before.has(item.path));
+      savedReplay = (await recentRecordings()).find(item => item.kind === 'replay' && !before.has(item.path));
       if (!savedReplay) await new Promise(resolve => setTimeout(resolve, 100));
     }
     if (savedReplay && sessionGame) libraryMetadata.update(savedReplay.path, { game: sessionGame });
@@ -1535,7 +1545,7 @@ async function toggleRecording() {
     if (output.recording) {
       autoRecordSuppressed = activeGames.length > 0;
       await obs.stopSession();
-      finalizeSessionMetadata();
+      await finalizeSessionMetadata();
       if (settings.instantReplay) {
         await startInstantReplay();
       } else {
@@ -1601,7 +1611,7 @@ async function deleteRecordings(filePaths) {
     fs.rmSync(target, { force: true });
     recordingLibrary.setFavorite(target, false, { persist: false });
     thumbnailPromises.delete(target);
-    for (const [token, entry] of mediaTokens) if (entry.sourcePath === target) mediaTokens.delete(token);
+    for (const [token, entry] of mediaTokens) if (entry.filePath === target) mediaTokens.delete(token);
   }
   recordingLibrary.persistFavorites();
   await broadcast();

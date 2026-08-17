@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { loadProjectEnv, required } = require('./env');
+const { parseEnv, loadProjectEnv, required } = require('./env');
 
 const projectRoot = path.join(__dirname, '..');
 const workerName = process.argv[2];
@@ -10,7 +10,9 @@ if (!workerPaths.has(workerName)) throw new Error('Choose clips-worker or a work
 const workerRoot = path.join(projectRoot, workerName);
 const templatePath = path.join(workerRoot, 'wrangler.template.jsonc');
 const targetPath = path.join(workerRoot, 'wrangler.jsonc');
-const env = loadProjectEnv(projectRoot);
+const env = process.env.CLIPS_HERMETIC_CHECK === '1'
+  ? { ...parseEnv(fs.readFileSync(path.join(projectRoot, '.env.example'), 'utf8')), ...process.env }
+  : loadProjectEnv(projectRoot);
 const template = fs.readFileSync(templatePath, 'utf8');
 const variables = [...template.matchAll(/{{([A-Z0-9_]+)}}/g)].map(match => match[1]);
 required(env, [...new Set(variables)]);

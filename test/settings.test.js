@@ -61,3 +61,14 @@ test('live capture restarts when folder or microphone changes', () => {
   assert.equal(captureRestartRequired(base, { ...base, microphoneDeviceId: 'microphone-id' }), true);
   assert.equal(captureRestartRequired(base, { ...base, retentionDays: 30 }), false);
 });
+
+test('malformed capture settings fall back to valid persisted values', () => {
+  const current = { ...base, obsRecordingQuality: 'HQ', obsResolution: '1920x1080', obsFps: 60, obsFormat: 'mkv' };
+  const settings = normalizeSettingsUpdate(current, {
+    ...current, obsRecordingQuality: 'invalid', obsResolution: 'huge', obsFps: 'fast', obsFormat: 'exe', clipLengthSeconds: 'never',
+    gameProfiles: { 'GAME.EXE': { quality: 'bad', resolution: 'bad', fps: 'bad', clipLengthSeconds: 'forever' } }
+  });
+  assert.deepEqual([settings.obsRecordingQuality, settings.obsResolution, settings.obsFps, settings.obsFormat, settings.clipLengthSeconds], ['HQ', '1920x1080', 60, 'mkv', 60]);
+  assert.equal(settings.gameProfiles['game.exe'].clipLengthSeconds, 5);
+  assert.equal(Number.isFinite(settings.gameProfiles['game.exe'].clipLengthSeconds), true);
+});
