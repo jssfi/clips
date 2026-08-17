@@ -8,6 +8,7 @@ const { signMetadata } = require('../scripts/update-signature');
 const {
   compareVersions,
   cleanupOldVersionDirectories,
+  cleanupInvalidPreparedVersions,
   isPreparationDirectory,
   isVersionDirectory,
   validateMetadata,
@@ -15,6 +16,7 @@ const {
   preparedUpdateMatches,
   downloadRanges,
   downloadUpdateArchive,
+  withFetchTimeout,
   updateRelaunchArgs
 } = require('../src/updater');
 
@@ -183,4 +185,31 @@ test('update archive download falls back when byte ranges are unsupported', asyn
 
   assert.equal(fullRequests, 1);
   assert.deepEqual(fs.readFileSync(archive), source);
+});
+
+test('update requests abort stalled connections and bodies', async () => {
+  await assert.rejects(
+    withFetchTimeout((_url, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }), 'https://updates.example/latest.json', {}, async () => {}, 10),
+    /timed out/
+  );
+  await assert.rejects(
+    withFetchTimeout(async (_url, { signal }) => new Response(new ReadableStream({ start(controller) {
+      signal.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+    } })), 'https://updates.example/app.zip', {}, async response => {
+      await response.arrayBuffer();
+    }, 10),
+    /timed out/
+  );
+});
+
+test('incomplete final-looking update directories are removed before retention', async t => {
+  const versions = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-invalid-version-'));
+  t.after(() => fs.rmSync(versions, { recursive: true, force: true }));
+  const invalid = path.join(versions, '0.5.0-nightly.4.deadbeef.app-crashed');
+  fs.mkdirSync(invalid);
+  fs.writeFileSync(path.join(invalid, '.clips-update.json'), JSON.stringify({ version: '0.5.0-nightly.4.deadbeef' }));
+  await cleanupInvalidPreparedVersions(versions);
+  assert.equal(fs.existsSync(invalid), false);
 });

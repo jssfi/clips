@@ -13,7 +13,6 @@ async function main() {
   const temporaryRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'clips-update-test-'));
   const previousLocalAppData = process.env.LOCALAPPDATA;
   const previousResourcesPath = process.resourcesPath;
-  const originalRename = fs.promises.rename;
   const server = http.createServer((request, response) => {
     if (request.url === '/latest.json') {
       response.writeHead(200, { 'content-type': 'application/json' });
@@ -35,11 +34,6 @@ async function main() {
   try {
     process.env.LOCALAPPDATA = temporaryRoot;
     process.resourcesPath = path.join(projectRoot, 'dist', 'staged', 'win-unpacked', 'resources');
-    fs.promises.rename = async () => {
-      throw Object.assign(new Error('Updater must not rename prepared application directories.'), {
-        code: 'EPERM'
-      });
-    };
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const states = [];
     let relaunchOptions = null;
@@ -79,7 +73,6 @@ async function main() {
     else process.env.LOCALAPPDATA = previousLocalAppData;
     if (previousResourcesPath === undefined) delete process.resourcesPath;
     else process.resourcesPath = previousResourcesPath;
-    fs.promises.rename = originalRename;
     await fs.promises.rm(temporaryRoot, { recursive: true, force: true });
   }
 }

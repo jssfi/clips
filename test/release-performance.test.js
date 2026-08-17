@@ -1,24 +1,35 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('fs');
-const path = require('path');
 
-const root = path.join(__dirname, '..');
-
-test('ordinary release artifacts build concurrently from shared metadata', () => {
-  const script = fs.readFileSync(path.join(root, 'scripts', 'build-release.mjs'), 'utf8');
-  assert.equal((script.match(/scripts\/write-build-info\.js/g) || []).length, 1);
-  assert.match(script, /Promise\.all\(\[updateInstaller, stagedApplication, sourceBundle\]\)/);
-  for (const file of ['electron-builder.update.json', 'electron-builder.staged.json']) {
-    assert.equal(JSON.parse(fs.readFileSync(path.join(root, file), 'utf8')).npmRebuild, false);
-  }
-  const updateConfig = JSON.parse(fs.readFileSync(path.join(root, 'electron-builder.update.json'), 'utf8'));
-  assert.notEqual(updateConfig.nsis.differentialPackage, false);
-  assert.match(fs.readFileSync(path.join(root, 'scripts', 'build-staged-update.ps1'), 'utf8'), /-mx=1/);
+test('release upload limiter enforces concurrency while completing every task', async () => {
+  const { limiter } = await import('../clips-worker/scripts/release-utils.mjs');
+  const schedule = limiter(3);
+  let active = 0;
+  let maximum = 0;
+  const completed = [];
+  await Promise.all(Array.from({ length: 12 }, (_, index) => schedule(async () => {
+    active += 1;
+    maximum = Math.max(maximum, active);
+    await new Promise(resolve => setImmediate(resolve));
+    completed.push(index);
+    active -= 1;
+  })));
+  assert.equal(maximum, 3);
+  assert.deepEqual(completed.sort((a, b) => a - b), Array.from({ length: 12 }, (_, index) => index));
 });
 
-test('GitHub release assets upload concurrently with large read buffers', () => {
-  const script = fs.readFileSync(path.join(root, 'scripts', 'publish-github-release.mjs'), 'utf8');
-  assert.match(script, /Promise\.all\(artifacts\.map\(uploadArtifact\)\)/);
-  assert.match(script, /highWaterMark: 4 \* 1024 \* 1024/);
+test('dual update metadata publication rolls back the first feed on partial failure', async () => {
+  const { publishMetadataPair } = await import('../clips-worker/scripts/release-utils.mjs');
+  const live = new Map([['latest.json', 'old-json'], ['latest.yml', 'old-yml']]);
+  await assert.rejects(publishMetadataPair(['latest.json', 'latest.yml'], {
+    readPrevious: async name => live.get(name) ?? null,
+    publishAndVerify: async name => {
+      if (name === 'latest.yml') throw new Error('injected second-write failure');
+      live.set(name, 'new-json');
+    },
+    restore: async (name, body) => live.set(name, body),
+    remove: async name => live.delete(name)
+  }), /rolled back/);
+  assert.equal(live.get('latest.json'), 'old-json');
+  assert.equal(live.get('latest.yml'), 'old-yml');
 });

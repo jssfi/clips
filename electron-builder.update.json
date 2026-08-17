@@ -39,6 +39,14 @@
       "to": "microphone-filters/nv-data"
     },
     {
+      "from": "vendor/libmpv/mpv-host.exe",
+      "to": "libmpv/mpv-host.exe"
+    },
+    {
+      "from": "vendor/libmpv/libmpv-2.dll",
+      "to": "libmpv/libmpv-2.dll"
+    },
+    {
       "from": "vendor/mpv/mpv.exe",
       "to": "mpv/mpv.exe"
     },

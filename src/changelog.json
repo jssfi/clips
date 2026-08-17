@@ -1,5 +1,15 @@
 [
   {
+    "version": "next",
+    "title": "Updates that fail safely",
+    "changes": [
+      "Update requests now time out cleanly, and interrupted preparations can no longer displace a working rollback version.",
+      "Release feeds and artifacts are verified cryptographically, and feed publication rolls back if either metadata format fails.",
+      "Release builds test upgrades from representative stable and nightly clients, runtime migration, restart behavior, and package inventory before publication.",
+      "Installer and staged update packages now carry a consistent player runtime."
+    ]
+  },
+  {
     "version": "0.5-nightly.3",
     "title": "Safer installs and capture recovery",
     "changes": [

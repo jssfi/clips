@@ -50,6 +50,10 @@
       "to": "libmpv/libmpv-2.dll"
     },
     {
+      "from": "vendor/mpv/mpv.exe",
+      "to": "mpv/mpv.exe"
+    },
+    {
       "from": "node_modules/7zip-bin/win/x64/7za.exe",
       "to": "tools/7za.exe"
     }

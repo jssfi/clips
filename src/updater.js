@@ -14,6 +14,8 @@ const VERSION_DIRECTORY = new RegExp(`^(${SEMVER})(?:\\.app-[A-Za-z0-9-]+)?$`);
 const RETRYABLE_FILE_ERRORS = new Set(['EACCES', 'EBUSY', 'ENOTEMPTY', 'EPERM']);
 const DOWNLOAD_STREAMS = 8;
 const MINIMUM_DOWNLOAD_PART_SIZE = 8 * 1024 * 1024;
+const METADATA_TIMEOUT_MS = 30 * 1000;
+const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
 function updateRoot(app) {
   return path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'jss-clips');
@@ -140,32 +142,49 @@ async function writeResponseBody(response, file, position, expectedSize, onBytes
   if (received !== expectedSize) throw new Error('The update server returned an incomplete download.');
 }
 
+async function withFetchTimeout(fetchImpl, url, options, consume, timeoutMs = DOWNLOAD_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const externalSignal = options?.signal;
+  const abortFromExternal = () => controller.abort(externalSignal.reason);
+  if (externalSignal?.aborted) abortFromExternal();
+  else externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
+  const timeout = setTimeout(() => controller.abort(new Error('The update request timed out.')), timeoutMs);
+  try {
+    const response = await fetchImpl(url, { ...options, signal: controller.signal });
+    return await consume(response);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('The update request timed out.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternal);
+  }
+}
+
 async function downloadInRanges(url, archive, size, ranges, onBytes, fetchImpl) {
   const controller = new AbortController();
   const file = await fs.promises.open(archive, 'w');
   try {
     await file.truncate(size);
     const downloads = ranges.map(async ({ start, end }) => {
-      const response = await fetchImpl(url, {
+      await withFetchTimeout(fetchImpl, url, {
         cache: 'no-store',
         headers: {
           'Accept-Encoding': 'identity',
           Range: `bytes=${start}-${end}`
-        },
-        signal: controller.signal
+        }, signal: controller.signal
+      }, async response => {
+        const contentRange = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') || '');
+        if (
+          response.status !== 206
+          || !response.body
+          || !contentRange
+          || Number(contentRange[1]) !== start
+          || Number(contentRange[2]) !== end
+          || Number(contentRange[3]) !== size
+        ) throw new Error('The update server does not support parallel downloads.');
+        await writeResponseBody(response, file, start, end - start + 1, onBytes);
       });
-      const contentRange = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') || '');
-      if (
-        response.status !== 206
-        || !response.body
-        || !contentRange
-        || Number(contentRange[1]) !== start
-        || Number(contentRange[2]) !== end
-        || Number(contentRange[3]) !== size
-      ) {
-        throw new Error('The update server does not support parallel downloads.');
-      }
-      await writeResponseBody(response, file, start, end - start + 1, onBytes);
     });
     try {
       await Promise.all(downloads);
@@ -180,17 +199,15 @@ async function downloadInRanges(url, archive, size, ranges, onBytes, fetchImpl) 
 }
 
 async function downloadInOneStream(url, archive, size, onBytes, fetchImpl) {
-  const response = await fetchImpl(url, {
+  await withFetchTimeout(fetchImpl, url, {
     cache: 'no-store',
     headers: { 'Accept-Encoding': 'identity' }
+  }, async response => {
+    if (!response.ok || !response.body) throw new Error(`Update download failed (${response.status}).`);
+    const file = await fs.promises.open(archive, 'w');
+    try { await writeResponseBody(response, file, 0, size, onBytes); }
+    finally { await file.close(); }
   });
-  if (!response.ok || !response.body) throw new Error(`Update download failed (${response.status}).`);
-  const file = await fs.promises.open(archive, 'w');
-  try {
-    await writeResponseBody(response, file, 0, size, onBytes);
-  } finally {
-    await file.close();
-  }
 }
 
 async function downloadUpdateArchive(url, archive, size, onProgress = () => {}, {
@@ -245,6 +262,24 @@ async function cleanupStalePreparations(versions) {
   )));
 }
 
+async function cleanupInvalidPreparedVersions(versions) {
+  let entries;
+  try { entries = await fs.promises.readdir(versions, { withFileTypes: true }); }
+  catch { return; }
+  await Promise.allSettled(entries.filter(entry => entry.isDirectory() && entry.name.includes('.app-')).map(async entry => {
+    const directory = path.join(versions, entry.name);
+    try {
+      const marker = JSON.parse(await fs.promises.readFile(path.join(directory, '.clips-update.json'), 'utf8'));
+      if (!parseVersion(marker.version)
+        || !isVersionDirectory(entry.name, marker.version)
+        || (await fs.promises.stat(path.join(directory, APP_EXECUTABLE))).size <= 0
+        || (await fs.promises.stat(path.join(directory, 'resources', 'app.asar'))).size <= 0) throw new Error('invalid');
+    } catch {
+      await removeWithRetries(directory, { recursive: true });
+    }
+  }));
+}
+
 async function cleanupOldVersionDirectories(versions, {
   protectedDirectories = [],
   retain = 2
@@ -287,6 +322,7 @@ async function cleanupOldVersions(app) {
   if (runningParent.toLowerCase() === path.resolve(versions).toLowerCase()) {
     protectedDirectories.push(runningDirectory);
   }
+  await cleanupInvalidPreparedVersions(versions);
   await cleanupOldVersionDirectories(versions, { protectedDirectories, retain: 2 });
 }
 
@@ -372,7 +408,9 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     const operationId = `${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const archive = path.join(downloads, `${metadata.url}.${operationId}.download`);
     const directoryName = `${metadata.version}.app-${operationId}`;
-    const destination = versionDirectory(app, metadata.version, directoryName);
+    const preparationName = `${metadata.version}.preparing-${operationId}`;
+    const destination = path.join(versions, preparationName);
+    const finalDestination = versionDirectory(app, metadata.version, directoryName);
     let prepared = false;
     await fs.promises.mkdir(downloads, { recursive: true });
     await fs.promises.mkdir(versions, { recursive: true });
@@ -406,6 +444,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
         sha512: metadata.sha512,
         preparedAt: new Date().toISOString()
       }, null, 2));
+      await fs.promises.rename(destination, finalDestination);
       prepared = true;
       return {
         version: metadata.version,
@@ -420,9 +459,10 @@ function createStagedUpdater({ app, feedUrl, onState }) {
 
   async function performCheck() {
     emit({ status: 'checking', message: '', percent: 0 });
-    const response = await fetch(`${feedUrl}/latest.json`, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`Update check failed (${response.status}).`);
-    const metadata = authenticateMetadata(await response.json());
+    const metadata = await withFetchTimeout(fetch, `${feedUrl}/latest.json`, { cache: 'no-store' }, async response => {
+      if (!response.ok) throw new Error(`Update check failed (${response.status}).`);
+      return authenticateMetadata(await response.json());
+    }, METADATA_TIMEOUT_MS);
     if (compareVersions(metadata.version, app.getVersion()) <= 0) {
       readyUpdate = null;
       readyMetadata = null;
@@ -451,9 +491,10 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     if (!readyUpdate || !fs.existsSync(readyUpdate.executable)) return false;
     let currentMetadata;
     try {
-      const response = await fetch(`${feedUrl}/latest.json`, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`Update confirmation failed (${response.status}).`);
-      currentMetadata = authenticateMetadata(await response.json());
+      currentMetadata = await withFetchTimeout(fetch, `${feedUrl}/latest.json`, { cache: 'no-store' }, async response => {
+        if (!response.ok) throw new Error(`Update confirmation failed (${response.status}).`);
+        return authenticateMetadata(await response.json());
+      }, METADATA_TIMEOUT_MS);
     } catch (error) {
       emit({ status: 'error', percent: 0, message: `Could not confirm this update is still available: ${error?.message || error}` });
       return false;
@@ -492,6 +533,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
 module.exports = {
   compareVersions,
   cleanupOldVersionDirectories,
+  cleanupInvalidPreparedVersions,
   isPreparationDirectory,
   isVersionDirectory,
   validateMetadata,
@@ -499,6 +541,7 @@ module.exports = {
   preparedUpdateMatches,
   downloadRanges,
   downloadUpdateArchive,
+  withFetchTimeout,
   updateRelaunchArgs,
   redirectToActiveVersion,
   createStagedUpdater

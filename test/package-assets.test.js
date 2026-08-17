@@ -26,3 +26,13 @@ test('every application package includes the browser UI assets', () => {
     }
   }
 });
+
+test('staged and installer updates carry the same player runtime components', () => {
+  for (const file of ['electron-builder.staged.json', 'electron-builder.update.json']) {
+    const config = JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'));
+    const sources = new Set(config.extraResources.map(resource => resource.from.replace(/\\/g, '/')));
+    for (const expected of ['vendor/libmpv/mpv-host.exe', 'vendor/libmpv/libmpv-2.dll', 'vendor/mpv/mpv.exe']) {
+      assert.ok(sources.has(expected), `${file} must package ${expected}`);
+    }
+  }
+});
