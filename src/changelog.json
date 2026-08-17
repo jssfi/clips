@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.10",
     "title": "Cleaner internals and reproducible checks",
     "changes": [
       "Media serving and tray management now live in focused modules, reducing Electron lifecycle coupling without changing app behavior.",
