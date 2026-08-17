@@ -9,11 +9,11 @@ const { promisify } = require('util');
 const { ObsController } = require('./obs');
 const buildInfo = require('./build-info.json');
 const { RUNTIME_VERSION, runtimeRoot, isRuntimeReady, ensureRuntimeInstalled } = require('./runtime');
-const { redirectToActiveVersion, createStagedUpdater } = require('./updater');
+const { redirectToActiveVersion, confirmActiveVersionBoot, createStagedUpdater } = require('./updater');
 const { createTrayController } = require('./tray-controller');
 const { MPV_QUIT_ON_FULLSCREEN_EXIT_SCRIPT, mpvFullscreenArgs } = require('./mpv-fullscreen');
 const { createLogger, redactLogText } = require('./logger');
-const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
+const { loadSettingsFile, normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
 const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./telemetry');
 const { parseProcessList } = require('./process-list');
 const { candidateKey, updateCandidateHistory } = require('./game-candidates');
@@ -57,7 +57,9 @@ const DEFAULTS = {
   nightlyUpdates: false, telemetryMode: 'pending'
 };
 
-let win, toastWin, settings, monitorTimer, stopTimer, toastHideTimer, toastRecoveryTimer, microphoneVolumePersistTimer, connectPromise, autoRecordSuppressed = false, lastError = '', activeGames = [], runningApps = [], lastClip = '', sessionDate = '', toastReady = false, pendingToast = null;
+let win, toastWin, settings, monitorTimer, monitorPromise, monitorRerunRequested = false, stopTimer, toastHideTimer, toastRecoveryTimer, microphoneVolumePersistTimer, connectPromise, autoRecordSuppressed = false, lastError = '', activeGames = [], runningApps = [], lastClip = '', sessionDate = '', toastReady = false, pendingToast = null;
+let settingsRecoveryWarning = '';
+let settingsPersistenceBlocked = false;
 let mpvProcess = null, mpvSocket = null, mpvBuffer = '', mpvRequestId = 0;
 let mpvFrameBuffer = Buffer.alloc(0);
 const mpvRequests = new Map();
@@ -186,34 +188,33 @@ function mpvFullscreenScriptPath() {
   return scriptPath;
 }
 function loadSettings() {
-  try {
-    const currentPath = settingsPath();
-    const legacyPath = path.join(legacyUserDataPath, 'settings.json');
-    const sourcePath = fs.existsSync(currentPath) ? currentPath : legacyPath;
-    const saved = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
-    if (saved.clipLengthSeconds == null) saved.clipLengthSeconds = Number(saved.stopDelaySeconds) || 60;
-    const {
-      freezeCaptureWhenUnfocused: _removed,
-      obsPort: _removedPort,
-      obsPassword: _removedPassword,
-      obsSettingsManaged: _removedManagedFlag,
-      microphoneNoiseSuppression: _removedNoiseSuppression,
-      cdnUrl: _removedCdnUrl,
-      cdnPassword: _removedCdnPassword,
-      cdnPasswordEncrypted: _removedCdnPasswordEncrypted,
-      ...currentSettings
-    } = saved;
-    return { ...DEFAULTS, ...currentSettings };
-  }
-  catch { return { ...DEFAULTS }; }
+  const loaded = loadSettingsFile({
+    currentPath: settingsPath(),
+    legacyPath: path.join(legacyUserDataPath, 'settings.json'),
+    defaults: DEFAULTS
+  });
+  settingsRecoveryWarning = loaded.warning;
+  settingsPersistenceBlocked = loaded.persistenceBlocked;
+  if (loaded.warning) logger.warn('settings recovery used defaults', {
+    path: loaded.sourcePath,
+    backupPath: loaded.backupPath,
+    message: loaded.error?.message,
+    backupError: loaded.backupError?.message
+  });
+  return loaded.settings;
 }
 function persist() {
+  if (settingsPersistenceBlocked) {
+    logger.warn('settings persistence skipped to preserve an unreadable settings file', { path: settingsPath() });
+    return false;
+  }
   const target = settingsPath();
   const temporary = `${target}.working`;
   fs.mkdirSync(path.dirname(target), { recursive: true });
   const stored = { ...settings };
   fs.writeFileSync(temporary, `${JSON.stringify(stored, null, 2)}\n`);
   fs.renameSync(temporary, target);
+  return true;
 }
 function ensureDirectory(folder) {
   if (fs.existsSync(folder)) {
@@ -787,10 +788,9 @@ async function monitor() {
       await obs.stopSession();
       await obs.disconnect().catch(() => {});
     }
-    lastError = '';
+    lastError = settingsRecoveryWarning;
   } catch (error) { setError(error); }
   broadcast();
-  scheduleNextMonitor();
 }
 function inspectCaptureHealth(status) {
   if (!status.recording) {
@@ -1132,12 +1132,25 @@ function monitorDelayMs() {
 }
 function scheduleNextMonitor() {
   clearTimeout(monitorTimer);
-  monitorTimer = setTimeout(monitor, monitorDelayMs());
+  monitorTimer = setTimeout(scheduleMonitor, monitorDelayMs());
 }
 function scheduleMonitor() {
   clearTimeout(monitorTimer);
   monitorTimer = null;
-  monitor();
+  if (monitorPromise) {
+    monitorRerunRequested = true;
+    return monitorPromise;
+  }
+  monitorPromise = monitor().finally(() => {
+    monitorPromise = null;
+    if (monitorRerunRequested) {
+      monitorRerunRequested = false;
+      scheduleMonitor();
+    } else {
+      scheduleNextMonitor();
+    }
+  });
+  return monitorPromise;
 }
 function addTimelineMarker() {
   if (!sessionStartedAt || !obs.lastStatus.recording) return;
@@ -1392,8 +1405,8 @@ async function saveSettings(next, { openWebOnDisable = true } = {}) {
       sessionDate = '';
     }
     settings = updated;
+    if (!persist()) throw new Error(settingsRecoveryWarning || 'Settings could not be saved.');
     if (updated.recordingsFolder !== previous.recordingsFolder) libraryMetadata = new LibraryMetadata(path.join(app.getPath('userData'), 'library.json'), updated.recordingsFolder);
-    persist();
     settingsCommitted = true;
     logger.info('settings saved', {
       recordingsFolder: settings.recordingsFolder,
@@ -1419,7 +1432,7 @@ async function saveSettings(next, { openWebOnDisable = true } = {}) {
     if (obs.connected && microphoneNvidiaNoiseRemovalChanged) await obs.setMicrophoneNvidiaNoiseRemoval(settings.microphoneNvidiaNoiseRemoval);
     if (restartCapture) await startSession({ recording: currentCapture.recording,
       replayLengthSeconds: currentCapture.recording ? 0 : settings.instantReplayLengthSeconds });
-    lastError = '';
+    lastError = settingsRecoveryWarning;
     if (desktopWindowChanged) {
       setImmediate(() => {
         if (settings.desktopWindow === false) {
@@ -1597,7 +1610,8 @@ app.whenReady().then(async () => {
   settings = loadSettings();
   libraryMetadata = new LibraryMetadata(path.join(app.getPath('userData'), 'library.json'), settings.recordingsFolder);
   recordingLibrary.loadFavorites();
-  persist();
+  if (!settingsRecoveryWarning || !fs.existsSync(settingsPath())) persist();
+  if (settingsRecoveryWarning) lastError = settingsRecoveryWarning;
   logger.info('application ready', {
     version: app.getVersion(),
     packaged: app.isPackaged,
@@ -1668,6 +1682,11 @@ app.whenReady().then(async () => {
   });
   broadcast();
   if (!process.argv.includes('--hidden') && settings.desktopWindow === false) openWebUi();
+  try {
+    if (confirmActiveVersionBoot(app)) logger.info('updated application boot confirmed', { version: app.getVersion() });
+  } catch (error) {
+    setError(new Error(`Could not confirm the updated application startup: ${error.message}`));
+  }
 });
 app.on('second-instance', openPreferredUi);
 process.on('uncaughtExceptionMonitor', error => { logger.error('uncaught exception', { message: error.message, stack: error.stack }); telemetry?.reportError(error).catch(() => {}); });

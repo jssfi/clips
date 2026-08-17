@@ -1,13 +1,12 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync, execFileSync } = require('node:child_process');
 
 const root = path.join(__dirname, '..');
 const runtimeRoot = path.join(root, 'vendor');
 const executable = path.join(runtimeRoot, 'libobs', 'bin', '64bit', 'clips-capture-host.exe');
-const outputDirectory = path.join(root, '.clips-dev', 'capture-host-test', String(Date.now()));
-const configRoot = path.join(root, '.clips-dev', 'capture-host');
 
 function obsProcessIds() {
   try {
@@ -26,6 +25,9 @@ function obsProcessIds() {
 
 async function main() {
   assert.equal(fs.existsSync(executable), true, `Capture host is missing: ${executable}`);
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-capture-host-test-'));
+  const outputDirectory = path.join(temporary, 'output');
+  const configRoot = path.join(temporary, 'config');
   fs.mkdirSync(outputDirectory, { recursive: true });
   const obsBefore = obsProcessIds();
   const child = spawn(executable, [], {
@@ -33,6 +35,7 @@ async function main() {
     windowsHide: true,
     stdio: ['pipe', 'pipe', 'pipe']
   });
+  const childExit = new Promise(resolve => child.once('exit', resolve));
   child.stderr.pipe(process.stderr);
   child.stdout.setEncoding('utf8');
   let buffer = '';
@@ -107,28 +110,35 @@ async function main() {
     await request('save');
     await new Promise(resolve => setTimeout(resolve, 2000));
     await request('stop');
-    await request('shutdown');
+    // Production also force-terminates the helper if libobs does not finish its
+    // best-effort shutdown promptly. Do not turn that known native behavior into
+    // a minute-long test hang or leave its recordings behind.
+    await request('shutdown', {}, 10000).catch(error => {
+      if (!/shutdown timed out/i.test(error.message)) throw error;
+      child.kill();
+    });
+    assert.deepEqual(obsProcessIds(), obsBefore, 'The capture host must not launch OBS Studio.');
+    const files = fs.readdirSync(outputDirectory)
+      .map(name => ({ name, size: fs.statSync(path.join(outputDirectory, name)).size }));
+    const recording = files.find(file => /^Recording .+\.mkv$/i.test(file.name));
+    const replay = files.find(file => /^Replay .+\.mkv$/i.test(file.name));
+    assert.ok(recording?.size > 1000, 'The libobs recording output was not created.');
+    assert.ok(replay?.size > 1000, 'The libobs replay-buffer output was not created.');
+    const probe = spawnSync(path.join(runtimeRoot, 'ffmpeg', 'ffmpeg.exe'), [
+      '-hide_banner', '-i', path.join(outputDirectory, recording.name), '-t', '0', '-map', '0:a?', '-f', 'null', '-'
+    ], { windowsHide: true, encoding: 'utf8' });
+    assert.equal(probe.status, 0, probe.stderr || 'FFmpeg could not inspect the native recording.');
+    const inputDescription = probe.stderr.split('Stream mapping:')[0];
+    const audioStreams = [...inputDescription.matchAll(/^\s*Stream #0:\d+.*Audio:/gm)];
+    assert.equal(audioStreams.length, 2, 'The recording must contain a Combined track and an application stem.');
+    assert.match(inputDescription, /^\s*title\s*:\s*Combined\s*$/m);
+    assert.match(inputDescription, /^\s*title\s*:\s*clips-capture-test\.exe\s*$/m);
+    console.log(`Native capture host recorded ${recording.name} and ${replay.name} without obs64.exe.`);
   } finally {
     if (!child.killed) child.kill();
+    await Promise.race([childExit, new Promise(resolve => setTimeout(resolve, 5000))]);
+    fs.rmSync(temporary, { recursive: true, force: true });
   }
-
-  assert.deepEqual(obsProcessIds(), obsBefore, 'The capture host must not launch OBS Studio.');
-  const files = fs.readdirSync(outputDirectory)
-    .map(name => ({ name, size: fs.statSync(path.join(outputDirectory, name)).size }));
-  const recording = files.find(file => /^Recording .+\.mkv$/i.test(file.name));
-  const replay = files.find(file => /^Replay .+\.mkv$/i.test(file.name));
-  assert.ok(recording?.size > 1000, 'The libobs recording output was not created.');
-  assert.ok(replay?.size > 1000, 'The libobs replay-buffer output was not created.');
-  const probe = spawnSync(path.join(runtimeRoot, 'ffmpeg', 'ffmpeg.exe'), [
-    '-hide_banner', '-i', path.join(outputDirectory, recording.name), '-t', '0', '-map', '0:a?', '-f', 'null', '-'
-  ], { windowsHide: true, encoding: 'utf8' });
-  assert.equal(probe.status, 0, probe.stderr || 'FFmpeg could not inspect the native recording.');
-  const inputDescription = probe.stderr.split('Stream mapping:')[0];
-  const audioStreams = [...inputDescription.matchAll(/^\s*Stream #0:\d+.*Audio:/gm)];
-  assert.equal(audioStreams.length, 2, 'The recording must contain a Combined track and an application stem.');
-  assert.match(inputDescription, /^\s*title\s*:\s*Combined\s*$/m);
-  assert.match(inputDescription, /^\s*title\s*:\s*clips-capture-test\.exe\s*$/m);
-  console.log(`Native capture host recorded ${recording.name} and ${replay.name} without obs64.exe.`);
 }
 
 main().catch(error => {

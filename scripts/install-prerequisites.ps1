@@ -2,7 +2,8 @@
 param(
     [switch]$Force,
     [switch]$SkipToolInstall,
-    [switch]$SkipNativeBuild
+    [switch]$SkipNativeBuild,
+    [string]$DownloadRoot = (Join-Path ([System.IO.Path]::GetTempPath()) 'clips-prerequisites-v1')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,8 +16,25 @@ if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64
 
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $vendorRoot = Join-Path $projectRoot 'vendor'
-$downloadRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'clips-prerequisites-v1'
-$vsDevCmd = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat'
+$downloadRoot = [System.IO.Path]::GetFullPath($DownloadRoot)
+$obsSdkCommit = '7778070cbd8e4689d91d90068091ced467c5fdef'
+
+function Find-VsDevCmd {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+        $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ($LASTEXITCODE -eq 0 -and $installation) {
+            $candidate = Join-Path ($installation | Select-Object -First 1) 'Common7\Tools\VsDevCmd.bat'
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+        }
+    }
+    @(
+        'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat',
+        'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat'
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+
+$vsDevCmd = Find-VsDevCmd
 
 $downloads = @{
     Obs = @{
@@ -66,7 +84,7 @@ if (-not (Get-Command 7z.exe -ErrorAction SilentlyContinue) `
     -and -not (Test-Path -LiteralPath $bundledSevenZip -PathType Leaf)) {
     Install-PackageIfMissing -Command '7z.exe' -Id '7zip.7zip'
 }
-if (-not (Test-Path -LiteralPath $vsDevCmd -PathType Leaf)) {
+if (-not $vsDevCmd) {
     if ($SkipToolInstall) { throw 'Visual Studio 2022 Build Tools with the C++ workload is required.' }
     if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
         throw 'WinGet is required to install Visual Studio Build Tools automatically.'
@@ -76,6 +94,8 @@ if (-not (Test-Path -LiteralPath $vsDevCmd -PathType Leaf)) {
         --accept-package-agreements --accept-source-agreements `
         --override '--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended'
     if ($LASTEXITCODE -ne 0) { throw "Visual Studio Build Tools installation failed (exit $LASTEXITCODE)." }
+    $vsDevCmd = Find-VsDevCmd
+    if (-not $vsDevCmd) { throw 'Visual Studio was installed but VsDevCmd.bat could not be located.' }
 }
 
 $sevenZip = @(
@@ -174,9 +194,24 @@ if ($Force -or -not (Test-Path -LiteralPath (Join-Path $libmpvDev 'libmpv-2.dll'
 
 $obsSdk = Join-Path $vendorRoot 'obs-sdk'
 if ($Force -and (Test-Path -LiteralPath $obsSdk)) { Remove-Item -LiteralPath $obsSdk -Recurse -Force }
+if (Test-Path -LiteralPath (Join-Path $obsSdk '.git') -PathType Container) {
+    $actualObsCommit = (& $git -C $obsSdk rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $actualObsCommit -ne $obsSdkCommit) {
+        throw "The OBS SDK checkout is not the pinned 31.1.2 commit $obsSdkCommit. Rerun with -Force."
+    }
+} elseif (Test-Path -LiteralPath $obsSdk) {
+    throw "The OBS SDK directory is incomplete. Rerun with -Force: $obsSdk"
+} else {
+    & $git init --quiet $obsSdk
+    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the OBS SDK checkout.' }
+    & $git -C $obsSdk remote add origin https://github.com/obsproject/obs-studio.git
+    & $git -C $obsSdk fetch --depth 1 origin $obsSdkCommit
+    if ($LASTEXITCODE -ne 0) { throw "Could not fetch the pinned OBS SDK commit $obsSdkCommit." }
+    & $git -C $obsSdk checkout --quiet --detach FETCH_HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Could not check out the pinned OBS SDK sources.' }
+}
 if (-not (Test-Path -LiteralPath (Join-Path $obsSdk 'libobs\obs.h') -PathType Leaf)) {
-    & $git clone --depth 1 --branch 31.1.2 https://github.com/obsproject/obs-studio.git $obsSdk
-    if ($LASTEXITCODE -ne 0) { throw 'Could not clone the OBS 31.1.2 SDK sources.' }
+    throw 'The pinned OBS SDK checkout does not contain libobs\obs.h.'
 }
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'stage-libobs.ps1')

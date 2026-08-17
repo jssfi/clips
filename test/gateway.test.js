@@ -68,6 +68,33 @@ test('gateway pairs and requires its capability for RPC', async () => withGatewa
   assert.deepEqual(await rpc.json(), { result: { method: 'getState', args: [1] } });
 }));
 
+test('gateway never shares an in-flight pairing approval with another origin', async () => {
+  const secondOrigin = 'https://beta.clips.jss.fi';
+  let approve;
+  const gateway = createGateway({
+    token: 'a-secure-test-token',
+    port: 0,
+    allowedOrigins: [origin, secondOrigin],
+    approvePairing: () => new Promise(resolve => { approve = resolve; }),
+    invoke: async () => ({})
+  });
+  const port = await gateway.start();
+  try {
+    const pair = requestOrigin => fetch(`http://127.0.0.1:${port}/v1/pair`, {
+      method: 'POST',
+      headers: { Origin: requestOrigin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientName: 'Browser' })
+    });
+    const first = pair(origin);
+    while (!approve) await new Promise(resolve => setImmediate(resolve));
+    const second = await pair(secondOrigin);
+    assert.equal(second.status, 409);
+    assert.deepEqual(await second.json(), { error: 'Another browser connection is awaiting approval.' });
+    approve(true);
+    assert.equal((await first).status, 200);
+  } finally { gateway.close(); }
+});
+
 test('gateway advertises local-network preflight permission', async () => withGateway(async ({ port }) => {
   const response = await fetch(`http://127.0.0.1:${port}/v1/rpc`, {
     method: 'OPTIONS', headers: { Origin: origin, 'Access-Control-Request-Private-Network': 'true' }

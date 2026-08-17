@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -92,14 +93,24 @@ if (release.name !== expectedName) {
 
 const existing = new Map((release.assets || []).map(asset => [asset.name, asset]));
 const uploadBase = String(release.upload_url).replace(/\{.*$/, '');
+const localHashes = new Map();
+async function sha512File(file) {
+  if (localHashes.has(file)) return localHashes.get(file);
+  const hash = crypto.createHash('sha512');
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  const digest = hash.digest('base64');
+  localHashes.set(file, digest);
+  return digest;
+}
+
 async function uploadArtifact(name) {
   const file = path.join(dist, name);
   const size = fs.statSync(file).size;
   const current = existing.get(name);
   if (current) {
     if (Number(current.size) !== size) throw new Error(`GitHub asset ${name} exists with the wrong size.`);
-    console.log(`Verified GitHub asset ${name} (${size} bytes)`);
-    return;
+    console.log(`Found existing GitHub asset ${name} (${size} bytes); checksum verification pending.`);
+    return current;
   }
   const started = Date.now();
   console.log(`Uploading GitHub asset ${name} (${size} bytes)`);
@@ -111,7 +122,31 @@ async function uploadArtifact(name) {
   const asset = await upload.json();
   if (Number(asset.size) !== size || asset.state !== 'uploaded') throw new Error(`GitHub did not finish uploading ${name}.`);
   console.log(`Uploaded GitHub asset ${name} (${size} bytes) in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  return asset;
 }
-await Promise.all(artifacts.map(uploadArtifact));
+const publishedAssets = await Promise.all(artifacts.map(uploadArtifact));
+
+async function verifyArtifact(name, asset) {
+  const expected = await sha512File(path.join(dist, name));
+  const response = await fetch(asset.url, {
+    headers: { ...headers, Accept: 'application/octet-stream', 'Accept-Encoding': 'identity' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(10 * 60 * 1000)
+  });
+  if (!response.ok || !response.body) throw new Error(`Could not download GitHub asset ${name} for verification: HTTP ${response.status}`);
+  const hash = crypto.createHash('sha512');
+  let size = 0;
+  for await (const chunk of response.body) {
+    size += chunk.length;
+    hash.update(chunk);
+  }
+  if (size !== fs.statSync(path.join(dist, name)).size) throw new Error(`GitHub asset ${name} changed size during verification.`);
+  if (hash.digest('base64') !== expected) throw new Error(`GitHub asset ${name} exists with the wrong checksum.`);
+  console.log(`Checksum-verified GitHub asset ${name} (${size} bytes)`);
+}
+
+for (let index = 0; index < artifacts.length; index += 1) {
+  await verifyArtifact(artifacts[index], publishedAssets[index]);
+}
 
 console.log(`Published and verified https://github.com/${repository}/releases/tag/${tag}`);

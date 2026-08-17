@@ -1,5 +1,16 @@
 [
   {
+    "version": "next",
+    "title": "Recovery and release safeguards",
+    "changes": [
+      "Clips now rolls back automatically when an updated application cannot complete its first healthy startup, and validates the full staged application before launching it.",
+      "Malformed settings are safely normalized or preserved for recovery instead of breaking monitoring or being silently overwritten.",
+      "Large recording libraries perform less repeated disk work, cleanup no longer rescans the full library after every deletion, and overlapping monitor runs are serialized.",
+      "Browser pairing, native player frame allocation, runtime ABI checks, native CI builds, and public release verification now fail closed in unsafe or inconsistent states.",
+      "Release tests clean up their temporary media runtimes, Worker routes have behavioral coverage, and JavaScript correctness linting is part of the standard check."
+    ]
+  },
+  {
     "version": "0.5-nightly.17",
     "title": "Staged updater diagnostic test",
     "changes": [

@@ -12,6 +12,7 @@ function isRawRecordingName(name) {
 
 function createRecordingLibrary({ getSettings, getMetadata, favoritesPath, onDelete = () => {}, today = () => new Date().toLocaleDateString('sv-SE') }) {
   let favoriteKeys = new Set();
+  const archivedDayCache = new Map();
   const root = () => path.resolve(getSettings().recordingsFolder);
   const recordingKey = filePath => {
     const relative = path.relative(root(), path.resolve(String(filePath || '')));
@@ -62,7 +63,6 @@ function createRecordingLibrary({ getSettings, getMetadata, favoritesPath, onDel
     }
     return files.sort((a, b) => a.modified - b.modified);
   };
-  const rawFootageBytes = async () => (await recordingFilesByAge()).reduce((total, recording) => total + recording.bytes, 0);
   const diskUsagePercent = async () => {
     const stats = await fs.promises.statfs(root());
     return stats.blocks ? ((stats.blocks - stats.bavail) / stats.blocks) * 100 : 0;
@@ -86,12 +86,15 @@ function createRecordingLibrary({ getSettings, getMetadata, favoritesPath, onDel
       if (settings.storageCleanupMode === 'disk') {
         const limit = Math.min(99, Math.max(1, Number(settings.maxDiskUsagePercent) || 80));
         const rawLimit = Math.max(1, Number(settings.maxRawRecordingGigabytes) || 250) * 1024 ** 3;
-        const isOverLimit = async () => await diskUsagePercent() >= limit || await rawFootageBytes() > rawLimit;
+        const recordings = await recordingFilesByAge();
+        let rawBytes = recordings.reduce((total, recording) => total + recording.bytes, 0);
+        const isOverLimit = async () => await diskUsagePercent() >= limit || rawBytes > rawLimit;
         if (!await isOverLimit()) return;
-        for (const recording of await recordingFilesByAge({ beforeToday: true })) {
+        for (const recording of recordings.filter(item => path.basename(path.dirname(item.path)) < today())) {
           if (recording.favorite) continue;
           await onDelete(recording.path);
           fs.rmSync(recording.path, { force: true });
+          rawBytes = Math.max(0, rawBytes - recording.bytes);
           favoriteKeys.delete(recordingKey(recording.path));
           if (!await isOverLimit()) break;
         }
@@ -130,16 +133,29 @@ function createRecordingLibrary({ getSettings, getMetadata, favoritesPath, onDel
     async archivedRecordings() {
       try { await fs.promises.access(root()); } catch { return []; }
       const recordings = [];
+      const activeDays = new Set();
       for (const day of await fs.promises.readdir(root(), { withFileTypes: true })) {
         if (!day.isDirectory() || !DAY_FOLDER.test(day.name) || day.name === today()) continue;
         const dayFolder = path.join(root(), day.name);
         if (!await isContainedRealPathAsync(dayFolder)) continue;
-        for (const item of await fs.promises.readdir(dayFolder, { withFileTypes: true })) {
-          if (!item.isFile() || !VIDEO_EXTENSION.test(item.name)) continue;
-          const filePath = path.join(dayFolder, item.name); if (!await isContainedRealPathAsync(filePath)) continue; const stat = await fs.promises.stat(filePath);
-          recordings.push(enrich({ name: item.name, path: filePath, bytes: stat.size, modified: stat.mtime.toISOString(), day: day.name, kind: /^Replay(?:[ _-]|$)/i.test(item.name) ? 'replay' : 'recording', favorite: isFavorite(filePath) }));
+        activeDays.add(day.name);
+        const directoryStat = await fs.promises.stat(dayFolder);
+        let cached = archivedDayCache.get(day.name);
+        if (!cached || cached.folder !== dayFolder || cached.modified !== directoryStat.mtimeMs) {
+          const items = [];
+          for (const item of await fs.promises.readdir(dayFolder, { withFileTypes: true })) {
+            if (!item.isFile() || !VIDEO_EXTENSION.test(item.name)) continue;
+            const filePath = path.join(dayFolder, item.name);
+            if (!await isContainedRealPathAsync(filePath)) continue;
+            const stat = await fs.promises.stat(filePath);
+            items.push({ name: item.name, path: filePath, bytes: stat.size, modified: stat.mtime.toISOString(), day: day.name, kind: /^Replay(?:[ _-]|$)/i.test(item.name) ? 'replay' : 'recording' });
+          }
+          cached = { folder: dayFolder, modified: directoryStat.mtimeMs, items };
+          archivedDayCache.set(day.name, cached);
         }
+        recordings.push(...cached.items.map(item => enrich({ ...item, favorite: isFavorite(item.path) })));
       }
+      for (const day of archivedDayCache.keys()) if (!activeDays.has(day)) archivedDayCache.delete(day);
       return recordings.sort((a, b) => b.day.localeCompare(a.day) || b.modified.localeCompare(a.modified));
     },
     validatePath(filePath) {

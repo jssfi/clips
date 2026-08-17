@@ -23,7 +23,14 @@ if not exist "%LIBOBS%\bin\64bit\obs.dll" (
 if not exist "%DEV%" mkdir "%DEV%"
 if not exist "%OUT%" mkdir "%OUT%"
 
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 >nul
+set "VSDEVCMD="
+for %%E in (BuildTools Enterprise Professional Community) do if not defined VSDEVCMD if exist "C:\Program Files\Microsoft Visual Studio\2022\%%E\Common7\Tools\VsDevCmd.bat" set "VSDEVCMD=C:\Program Files\Microsoft Visual Studio\2022\%%E\Common7\Tools\VsDevCmd.bat"
+if not defined VSDEVCMD if exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" set "VSDEVCMD=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+if not defined VSDEVCMD (
+  echo Visual Studio 2022 C++ build tools were not found.
+  exit /b 1
+)
+call "%VSDEVCMD%" -arch=x64 >nul
 if errorlevel 1 exit /b 1
 
 dumpbin /exports "%OBS%\bin\64bit\obs.dll" > "%DEV%\obs-exports.txt"

@@ -36,3 +36,27 @@ test('staged and installer updates carry the same player runtime components', ()
     }
   }
 });
+
+test('duplicated package configurations keep application files and shared resources in sync', () => {
+  const configurations = packageConfigurations.map(file => ({
+    file,
+    value: JSON.parse(fs.readFileSync(path.join(root, file), 'utf8'))
+  }));
+  const expectedFiles = [...configurations[0].value.files].sort();
+  for (const { file, value } of configurations.slice(1)) {
+    assert.deepEqual([...value.files].sort(), expectedFiles, `${file} application files drifted from the shared package contract`);
+  }
+
+  const requiredResources = [
+    'legal',
+    'vendor/capture-host/clips-capture-host.exe',
+    'vendor/libmpv/mpv-host.exe',
+    'vendor/libmpv/libmpv-2.dll',
+    'vendor/mpv/mpv.exe',
+    'node_modules/7zip-bin/win/x64/7za.exe'
+  ];
+  for (const { file, value } of configurations) {
+    const resources = new Set(value.extraResources.map(resource => resource.from.replace(/\\/g, '/')));
+    for (const expected of requiredResources) assert.ok(resources.has(expected), `${file} must package ${expected}`);
+  }
+});

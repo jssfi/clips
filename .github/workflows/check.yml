@@ -19,6 +19,14 @@ jobs:
       - run: npm ci --prefix clips-worker
       - run: npm ci --prefix legacy/update-worker
       - run: npm ci --prefix legacy/telemetry-worker
+      - name: Cache pinned native prerequisites
+        uses: actions/cache@v4
+        with:
+          path: .clips-dev/prerequisites
+          key: clips-native-prerequisites-v1-${{ hashFiles('scripts/install-prerequisites.ps1') }}
+      - name: Stage pinned native prerequisites
+        shell: powershell
+        run: scripts/install-prerequisites.ps1 -SkipToolInstall -SkipNativeBuild -DownloadRoot .clips-dev/prerequisites
       - run: npm run check
       - run: scripts\build-mpv-host.cmd
       - run: scripts\build-capture-host.cmd

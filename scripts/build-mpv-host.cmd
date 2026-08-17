@@ -2,7 +2,14 @@
 setlocal
 set "ROOT=%~dp0.."
 set "DEV=%ROOT%\vendor\libmpv\dev"
-call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" -arch=x64 >nul
+set "VSDEVCMD="
+for %%E in (BuildTools Enterprise Professional Community) do if not defined VSDEVCMD if exist "C:\Program Files\Microsoft Visual Studio\2022\%%E\Common7\Tools\VsDevCmd.bat" set "VSDEVCMD=C:\Program Files\Microsoft Visual Studio\2022\%%E\Common7\Tools\VsDevCmd.bat"
+if not defined VSDEVCMD if exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat" set "VSDEVCMD=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat"
+if not defined VSDEVCMD (
+  echo Visual Studio 2022 C++ build tools were not found.
+  exit /b 1
+)
+call "%VSDEVCMD%" -arch=x64 >nul
 if errorlevel 1 exit /b 1
 dumpbin /exports "%DEV%\libmpv-2.dll" | findstr " mpv_" > "%DEV%\exports.txt"
 powershell -NoProfile -Command "$lines = Get-Content '%DEV%\exports.txt'; @('LIBRARY libmpv-2.dll','EXPORTS') | Set-Content '%DEV%\mpv.def'; $lines | ForEach-Object { if ($_ -match ' (mpv_[A-Za-z0-9_]+)$') { $matches[1] } } | Add-Content '%DEV%\mpv.def'"

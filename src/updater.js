@@ -78,27 +78,129 @@ function updateRelaunchArgs(args = process.argv.slice(1)) {
   return args.filter(argument => argument !== '--hidden');
 }
 
-function readActiveVersion(app) {
+function sha512Sync(filePath) {
+  const hash = crypto.createHash('sha512');
+  hash.update(rawFs.readFileSync(filePath));
+  return hash.digest('base64');
+}
+
+function validateVersionPointer(app, active) {
+  if (!active || !parseVersion(active.version)) return null;
+  const directory = active.directory || active.version;
+  if (!isVersionDirectory(directory, active.version)) return null;
+  const root = versionDirectory(app, active.version, directory);
+  const executable = path.join(root, APP_EXECUTABLE);
+  const asar = path.join(root, 'resources', 'app.asar');
   try {
-    const active = JSON.parse(fs.readFileSync(activeVersionPath(app), 'utf8'));
-    if (!parseVersion(active.version)) return null;
-    const directory = active.directory || active.version;
-    if (!isVersionDirectory(directory, active.version)) return null;
-    const executable = versionExecutable(app, active.version, directory);
-    return fs.statSync(executable).size > 0
-      ? { version: active.version, directory, executable }
-      : null;
+    const marker = JSON.parse(rawFs.readFileSync(path.join(root, '.clips-update.json'), 'utf8'));
+    if (marker.version !== active.version
+      || rawFs.statSync(executable).size <= 0
+      || rawFs.statSync(asar).size <= 0
+      || (marker.asarSha512 && sha512Sync(asar) !== marker.asarSha512)) return null;
+    return {
+      version: active.version,
+      directory,
+      executable,
+      activatedAt: active.activatedAt,
+      state: active.state === 'pending' ? 'pending' : 'confirmed',
+      bootAttempts: Number.isSafeInteger(active.bootAttempts) && active.bootAttempts >= 0 ? active.bootAttempts : 0,
+      previous: active.previous
+    };
   } catch {
     return null;
   }
 }
 
-function redirectToActiveVersion(app) {
+function readActivePointer(app) {
+  try { return JSON.parse(fs.readFileSync(activeVersionPath(app), 'utf8')); }
+  catch { return null; }
+}
+
+function readActiveVersion(app) {
+  return validateVersionPointer(app, readActivePointer(app));
+}
+
+function writeActivePointerSync(app, value) {
+  const pointer = activeVersionPath(app);
+  fs.mkdirSync(path.dirname(pointer), { recursive: true });
+  const temporary = `${pointer}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`);
+  try { fs.renameSync(temporary, pointer); }
+  catch (error) {
+    try { fs.rmSync(temporary, { force: true }); } catch {}
+    throw error;
+  }
+}
+
+function installedRollback(active) {
+  const previous = active?.previous;
+  if (!previous || previous.type !== 'installed'
+    || !parseVersion(previous.version)
+    || path.basename(String(previous.executable || '')).toLowerCase() !== APP_EXECUTABLE
+    || !path.isAbsolute(previous.executable)) return null;
+  try { return rawFs.statSync(previous.executable).size > 0 ? previous : null; }
+  catch { return null; }
+}
+
+function rollbackActiveVersion(app, pointer = readActivePointer(app)) {
+  const previous = validateVersionPointer(app, pointer?.previous);
+  const installed = previous ? null : installedRollback(pointer);
+  try {
+    if (previous) {
+      writeActivePointerSync(app, {
+        version: previous.version,
+        directory: previous.directory,
+        activatedAt: previous.activatedAt,
+        state: 'confirmed'
+      });
+    } else {
+      fs.rmSync(activeVersionPath(app), { force: true });
+    }
+  } catch {
+    return null;
+  }
+  return previous || installed;
+}
+
+function confirmActiveVersionBoot(app, currentExecutable = process.execPath) {
+  const pointer = readActivePointer(app);
+  const active = validateVersionPointer(app, pointer);
+  if (!active || active.state !== 'pending'
+    || path.resolve(currentExecutable).toLowerCase() !== path.resolve(active.executable).toLowerCase()) return false;
+  writeActivePointerSync(app, {
+    version: active.version,
+    directory: active.directory,
+    activatedAt: active.activatedAt,
+    confirmedAt: new Date().toISOString(),
+    state: 'confirmed'
+  });
+  return true;
+}
+
+function redirectToActiveVersion(app, { currentExecutable = process.execPath, spawnImpl = spawn } = {}) {
   if (!app.isPackaged) return false;
-  const active = readActiveVersion(app);
-  if (!active || compareVersions(active.version, app.getVersion()) <= 0) return false;
-  if (path.resolve(process.execPath).toLowerCase() === path.resolve(active.executable).toLowerCase()) return false;
-  spawn(active.executable, process.argv.slice(1), {
+  const pointer = readActivePointer(app);
+  let active = validateVersionPointer(app, pointer);
+  let rollback = null;
+  if (!active) rollback = rollbackActiveVersion(app, pointer);
+  else if (active.state === 'pending' && active.bootAttempts > 0) {
+    rollback = rollbackActiveVersion(app, pointer);
+    active = null;
+  }
+  if (rollback) {
+    if (path.resolve(currentExecutable).toLowerCase() === path.resolve(rollback.executable).toLowerCase()) return false;
+    spawnImpl(rollback.executable, process.argv.slice(1), {
+      cwd: path.dirname(rollback.executable), detached: true, windowsHide: false, stdio: 'ignore'
+    }).unref();
+    return true;
+  }
+  if (!active) return false;
+  if (path.resolve(currentExecutable).toLowerCase() === path.resolve(active.executable).toLowerCase()) {
+    if (active.state === 'pending') writeActivePointerSync(app, { ...pointer, bootAttempts: 1, bootStartedAt: new Date().toISOString() });
+    return false;
+  }
+  if (compareVersions(active.version, app.getVersion()) <= 0) return false;
+  spawnImpl(active.executable, process.argv.slice(1), {
     cwd: path.dirname(active.executable),
     detached: true,
     windowsHide: false,
@@ -626,7 +728,7 @@ function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () 
       readyUpdate = null;
       readyMetadata = null;
       if (compareVersions(currentMetadata.version, app.getVersion()) > 0) {
-        emit({ status: 'checking', version: currentMetadata.version, percent: 0, message: 'The previous update was withdrawn. Getting the replacementâ€¦' });
+        emit({ status: 'checking', version: currentMetadata.version, percent: 0, message: 'The previous update was withdrawn. Getting the replacement…' });
         operation = performCheck().finally(() => { operation = null; });
         await operation.catch(error => {
           emit({ status: 'error', percent: 0, message: error?.message || String(error) });
@@ -639,12 +741,23 @@ function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () 
     await beforeRestart();
     trace('info', 'capture shutdown complete');
     const pointer = activeVersionPath(app);
-    await fs.promises.mkdir(path.dirname(pointer), { recursive: true });
-    await fs.promises.writeFile(pointer, `${JSON.stringify({
+    const previousActive = readActiveVersion(app);
+    writeActivePointerSync(app, {
       version: readyUpdate.version,
       directory: readyUpdate.directory,
-      activatedAt: new Date().toISOString()
-    }, null, 2)}\n`);
+      activatedAt: new Date().toISOString(),
+      state: 'pending',
+      bootAttempts: 0,
+      previous: previousActive ? {
+        version: previousActive.version,
+        directory: previousActive.directory,
+        activatedAt: previousActive.activatedAt
+      } : {
+        type: 'installed',
+        version: app.getVersion(),
+        executable: process.execPath
+      }
+    });
     trace('info', 'active pointer written', { pointer, readyUpdate });
     app.isQuitting = true;
     app.relaunch({ execPath: readyUpdate.executable, args: updateRelaunchArgs() });
@@ -672,6 +785,9 @@ module.exports = {
   renameWithRetries,
   promotePreparedDirectory,
   updateRelaunchArgs,
+  readActiveVersion,
+  rollbackActiveVersion,
+  confirmActiveVersionBoot,
   redirectToActiveVersion,
   createStagedUpdater
 };

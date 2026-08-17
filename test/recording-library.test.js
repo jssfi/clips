@@ -43,6 +43,22 @@ test('recording library lists and enriches recent and archived recordings', asyn
   ]);
 });
 
+test('unchanged archive days reuse their file index', async t => {
+  const { recordingsFolder, library } = fixture();
+  const archived = recording(recordingsFolder, '2026-08-16', 'Recording.mp4', 'video');
+  const originalStat = fs.promises.stat;
+  let fileStats = 0;
+  t.mock.method(fs.promises, 'stat', async target => {
+    if (path.resolve(target) === path.resolve(archived)) fileStats += 1;
+    return originalStat.call(fs.promises, target);
+  });
+
+  await library.archivedRecordings();
+  await library.archivedRecordings();
+
+  assert.equal(fileStats, 1);
+});
+
 test('age cleanup deletes only expired raw footage and preserves favorites and exports', async () => {
   const { recordingsFolder, library } = fixture();
   const expired = recording(recordingsFolder, '2026-08-14', 'Recording.mkv');
@@ -56,6 +72,31 @@ test('age cleanup deletes only expired raw footage and preserves favorites and e
 
   assert.equal(fs.existsSync(expired), false);
   for (const preserved of [favorite, replay, trimmed, current]) assert.equal(fs.existsSync(preserved), true);
+});
+
+test('disk cleanup scans raw recordings once while deleting multiple files', async t => {
+  const { recordingsFolder, library } = fixture({
+    storageCleanupMode: 'disk',
+    maxDiskUsagePercent: 99,
+    maxRawRecordingGigabytes: 1
+  });
+  const first = recording(recordingsFolder, '2026-08-13', 'Recording-1.mkv');
+  const second = recording(recordingsFolder, '2026-08-14', 'Recording-2.mkv');
+  const third = recording(recordingsFolder, '2026-08-15', 'Recording-3.mkv');
+  for (const file of [first, second, third]) fs.truncateSync(file, 600 * 1024 ** 2);
+  const originalReaddir = fs.promises.readdir;
+  let rootScans = 0;
+  t.mock.method(fs.promises, 'readdir', async (target, options) => {
+    if (path.resolve(target) === path.resolve(recordingsFolder)) rootScans += 1;
+    return originalReaddir.call(fs.promises, target, options);
+  });
+
+  await library.cleanupStorage(folder => fs.mkdirSync(folder, { recursive: true }));
+
+  assert.equal(rootScans, 1);
+  assert.equal(fs.existsSync(first), false);
+  assert.equal(fs.existsSync(second), false);
+  assert.equal(fs.existsSync(third), true);
 });
 
 test('recording path validation rejects a directory link that escapes the library', { skip: process.platform !== 'win32' }, () => {

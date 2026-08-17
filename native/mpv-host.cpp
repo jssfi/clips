@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -22,6 +23,13 @@ static std::atomic<bool> running{true};
 static std::atomic<bool> frameReady{true};
 static std::atomic<int> frameWidth{640};
 static std::atomic<int> frameHeight{360};
+static constexpr int MAX_FRAME_DIMENSION = 8192;
+
+static bool validFrameSize(int width, int height) {
+  if (width < 1 || height < 1 || width > MAX_FRAME_DIMENSION || height > MAX_FRAME_DIMENSION) return false;
+  const size_t stride = static_cast<size_t>(width) * 4;
+  return static_cast<size_t>(height) <= (std::numeric_limits<size_t>::max)() / stride;
+}
 
 static bool writeAll(HANDLE output, const void* data, size_t size) {
   const auto* cursor = static_cast<const unsigned char*>(data);
@@ -88,8 +96,12 @@ static void commandLoop() {
     } else if (command == "bounds") {
       int x = 0, y = 0, width = 1, height = 1;
       stream >> x >> y >> width >> height;
-      frameWidth = max(1, width);
-      frameHeight = max(1, height);
+      if (!validFrameSize(width, height)) {
+        respond(id, "error\tInvalid video frame dimensions.");
+        continue;
+      }
+      frameWidth = width;
+      frameHeight = height;
       frameReady = true;
       respond(id, "ok");
     } else if (command == "quit") {
@@ -147,8 +159,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
   wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
   if (argc < 7) return 2;
   int x = _wtoi(argv[2]), y = _wtoi(argv[3]), width = _wtoi(argv[4]), height = _wtoi(argv[5]);
-  frameWidth = max(1, width);
-  frameHeight = max(1, height);
+  if (!validFrameSize(width, height)) { LocalFree(argv); return 7; }
+  frameWidth = width;
+  frameHeight = height;
   std::wstring file = argv[6];
 
   WNDCLASSW windowClass{};

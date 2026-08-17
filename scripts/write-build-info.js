@@ -1,9 +1,24 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { loadProjectEnv } = require('./env');
 
 const target = path.join(__dirname, '..', 'src', 'build-info.json');
 const releaseConfigTarget = path.join(__dirname, '..', 'src', 'release-config.json');
+const runtimeAbiTarget = path.join(__dirname, '..', 'src', 'runtime-abi.json');
+const bundledObs = path.join(__dirname, '..', 'vendor', 'libobs', 'bin', '64bit', 'obs.dll');
+
+function verifyRuntimeAbi({ manifestPath = runtimeAbiTarget, obsPath = bundledObs } = {}) {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  if (!Number.isSafeInteger(manifest.runtimeVersion) || manifest.runtimeVersion < 1 || !/^[0-9a-f]{64}$/i.test(manifest.obsSha256 || '')) {
+    throw new Error('src/runtime-abi.json is invalid.');
+  }
+  const actual = crypto.createHash('sha256').update(fs.readFileSync(obsPath)).digest('hex');
+  if (actual.toLowerCase() !== manifest.obsSha256.toLowerCase()) {
+    throw new Error(`The staged OBS runtime changed without an ABI declaration. Bump RUNTIME_VERSION and update src/runtime-abi.json before building (expected ${manifest.obsSha256}, got ${actual}).`);
+  }
+  return manifest;
+}
 function releaseConfigFromEnv(env) {
   const baseUrl = String(env.CLIPS_BASE_URL || '').trim().replace(/\/+$/, '');
   const values = {
@@ -21,6 +36,8 @@ function releaseConfigFromEnv(env) {
 }
 
 function writeBuildInfo(env = loadProjectEnv()) {
+  const runtimeAbi = verifyRuntimeAbi();
+  console.log(`Runtime ABI v${runtimeAbi.runtimeVersion}: ${runtimeAbi.obsSha256}`);
   const buildInfo = { buildTime: new Date().toISOString() };
   fs.writeFileSync(target, `${JSON.stringify(buildInfo, null, 2)}\n`);
   console.log(`Build time: ${buildInfo.buildTime}`);
@@ -36,4 +53,4 @@ function writeBuildInfo(env = loadProjectEnv()) {
 
 if (require.main === module) writeBuildInfo();
 
-module.exports = { releaseConfigFromEnv, writeBuildInfo };
+module.exports = { releaseConfigFromEnv, verifyRuntimeAbi, writeBuildInfo };

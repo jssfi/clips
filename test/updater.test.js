@@ -20,12 +20,175 @@ const {
   withFetchTimeout,
   renameWithRetries,
   promotePreparedDirectory,
-  updateRelaunchArgs
+  updateRelaunchArgs,
+  readActiveVersion,
+  rollbackActiveVersion,
+  confirmActiveVersionBoot,
+  redirectToActiveVersion
 } = require('../src/updater');
+
+function createPreparedVersion(root, version, directory = version, { asar = 'application' } = {}) {
+  const destination = path.join(root, 'jss-clips', 'app-versions', directory);
+  fs.mkdirSync(path.join(destination, 'resources'), { recursive: true });
+  fs.writeFileSync(path.join(destination, 'jss clips.exe'), 'executable');
+  fs.writeFileSync(path.join(destination, 'resources', 'app.asar'), asar);
+  fs.writeFileSync(path.join(destination, '.clips-update.json'), JSON.stringify({
+    version,
+    asarSha512: crypto.createHash('sha512').update(asar).digest('base64')
+  }));
+  return destination;
+}
+
+function updateTestApp(root, version = '0.5.0') {
+  return { isPackaged: true, getVersion: () => version, getPath: () => root };
+}
+
+function withLocalAppData(root, callback) {
+  const original = process.env.LOCALAPPDATA;
+  process.env.LOCALAPPDATA = root;
+  try { return callback(); }
+  finally {
+    if (original === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = original;
+  }
+}
 
 test('update restarts discard background startup without changing other arguments', () => {
   assert.deepEqual(updateRelaunchArgs(['--hidden', '--trace-warnings']), ['--trace-warnings']);
   assert.deepEqual(updateRelaunchArgs(['--trace-warnings']), ['--trace-warnings']);
+});
+
+test('legacy active pointers remain compatible but require a complete prepared application', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-active-legacy-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const version = '0.5.1-nightly.1.deadbeef';
+  const directory = `${version}.app-valid`;
+  const destination = createPreparedVersion(root, version, directory);
+  const pointer = path.join(root, 'jss-clips', 'active-app.json');
+  fs.writeFileSync(pointer, JSON.stringify({ version, directory, activatedAt: '2026-08-17T00:00:00.000Z' }));
+
+  withLocalAppData(root, () => {
+    assert.equal(readActiveVersion(updateTestApp(root)).state, 'confirmed');
+    fs.writeFileSync(path.join(destination, 'resources', 'app.asar'), 'corrupt');
+    assert.equal(readActiveVersion(updateTestApp(root)), null);
+  });
+});
+
+test('malformed and incomplete active pointers are rejected', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-active-invalid-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const pointer = path.join(root, 'jss-clips', 'active-app.json');
+  fs.mkdirSync(path.dirname(pointer), { recursive: true });
+
+  withLocalAppData(root, () => {
+    fs.writeFileSync(pointer, '{not json');
+    assert.equal(readActiveVersion(updateTestApp(root)), null);
+    fs.writeFileSync(pointer, JSON.stringify({ version: '0.5.1', directory: '../escape' }));
+    assert.equal(readActiveVersion(updateTestApp(root)), null);
+    createPreparedVersion(root, '0.5.1');
+    fs.rmSync(path.join(root, 'jss-clips', 'app-versions', '0.5.1', '.clips-update.json'));
+    fs.writeFileSync(pointer, JSON.stringify({ version: '0.5.1' }));
+    assert.equal(readActiveVersion(updateTestApp(root)), null);
+  });
+});
+
+test('a failed pending boot rolls back to the previous confirmed version', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-active-rollback-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const previousVersion = '0.5.1-nightly.1.aaaaaaaa';
+  const failedVersion = '0.5.1-nightly.2.bbbbbbbb';
+  const previousDirectory = `${previousVersion}.app-previous`;
+  const failedDirectory = `${failedVersion}.app-failed`;
+  createPreparedVersion(root, previousVersion, previousDirectory);
+  createPreparedVersion(root, failedVersion, failedDirectory);
+  const pointer = path.join(root, 'jss-clips', 'active-app.json');
+  fs.writeFileSync(pointer, JSON.stringify({
+    version: failedVersion,
+    directory: failedDirectory,
+    state: 'pending',
+    bootAttempts: 1,
+    previous: { version: previousVersion, directory: previousDirectory, activatedAt: '2026-08-16T00:00:00.000Z' }
+  }));
+
+  withLocalAppData(root, () => {
+    const restored = rollbackActiveVersion(updateTestApp(root));
+    assert.equal(restored.version, previousVersion);
+    assert.deepEqual(JSON.parse(fs.readFileSync(pointer, 'utf8')), {
+      version: previousVersion,
+      directory: previousDirectory,
+      activatedAt: '2026-08-16T00:00:00.000Z',
+      state: 'confirmed'
+    });
+  });
+});
+
+test('a healthy pending version can be confirmed only by its own executable', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-active-confirm-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const version = '0.5.1-nightly.3.cccccccc';
+  const directory = `${version}.app-current`;
+  const destination = createPreparedVersion(root, version, directory);
+  const executable = path.join(destination, 'jss clips.exe');
+  const pointer = path.join(root, 'jss-clips', 'active-app.json');
+  fs.writeFileSync(pointer, JSON.stringify({ version, directory, state: 'pending', bootAttempts: 1 }));
+
+  withLocalAppData(root, () => {
+    assert.equal(confirmActiveVersionBoot(updateTestApp(root), path.join(root, 'other.exe')), false);
+    assert.equal(confirmActiveVersionBoot(updateTestApp(root), executable), true);
+    const confirmed = JSON.parse(fs.readFileSync(pointer, 'utf8'));
+    assert.equal(confirmed.state, 'confirmed');
+    assert.ok(confirmed.confirmedAt);
+    assert.equal('bootAttempts' in confirmed, false);
+  });
+});
+
+test('the first pending-version launch is recorded before version comparison', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-active-first-boot-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const version = '0.5.1-nightly.4.dddddddd';
+  const directory = `${version}.app-current`;
+  const executable = path.join(createPreparedVersion(root, version, directory), 'jss clips.exe');
+  const pointer = path.join(root, 'jss-clips', 'active-app.json');
+  fs.writeFileSync(pointer, JSON.stringify({ version, directory, state: 'pending', bootAttempts: 0 }));
+
+  withLocalAppData(root, () => {
+    assert.equal(redirectToActiveVersion(updateTestApp(root, version), { currentExecutable: executable }), false);
+    const attempted = JSON.parse(fs.readFileSync(pointer, 'utf8'));
+    assert.equal(attempted.bootAttempts, 1);
+    assert.ok(attempted.bootStartedAt);
+  });
+});
+
+test('a later launch automatically redirects to the rollback version after an unconfirmed boot', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-active-auto-rollback-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const previousVersion = '0.5.1-nightly.4.aaaaaaaa';
+  const failedVersion = '0.5.1-nightly.5.bbbbbbbb';
+  const previousDirectory = `${previousVersion}.app-previous`;
+  const failedDirectory = `${failedVersion}.app-failed`;
+  const previousExecutable = path.join(createPreparedVersion(root, previousVersion, previousDirectory), 'jss clips.exe');
+  createPreparedVersion(root, failedVersion, failedDirectory);
+  const pointer = path.join(root, 'jss-clips', 'active-app.json');
+  fs.writeFileSync(pointer, JSON.stringify({
+    version: failedVersion,
+    directory: failedDirectory,
+    state: 'pending',
+    bootAttempts: 1,
+    previous: { version: previousVersion, directory: previousDirectory }
+  }));
+  const launches = [];
+
+  withLocalAppData(root, () => {
+    assert.equal(redirectToActiveVersion(updateTestApp(root), {
+      currentExecutable: path.join(root, 'installed', 'jss clips.exe'),
+      spawnImpl: executable => {
+        launches.push(executable);
+        return { unref() {} };
+      }
+    }), true);
+    assert.deepEqual(launches, [previousExecutable]);
+    assert.equal(readActiveVersion(updateTestApp(root)).version, previousVersion);
+  });
 });
 
 test('old app versions are pruned while active and rollback versions are retained', async t => {

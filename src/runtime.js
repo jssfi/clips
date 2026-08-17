@@ -1,8 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const runtimeAbi = require('./runtime-abi.json');
 
 const RUNTIME_VERSION = 2;
+if (runtimeAbi.runtimeVersion !== RUNTIME_VERSION) throw new Error('The packaged runtime ABI does not match this application.');
 const LIBOBS_BIN_FILES = [
   'obs.dll',
   'libobs-d3d11.dll',

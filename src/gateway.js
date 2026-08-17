@@ -53,7 +53,7 @@ function createGateway({
   const origins = new Set(allowedOrigins);
   const eventClients = new Set();
   let server = null;
-  let pairingPromise = null;
+  let pairingRequest = null;
 
   function allowedOrigin(request) {
     const origin = String(request.headers.origin || '');
@@ -138,11 +138,23 @@ function createGateway({
     }
     if (request.method === 'POST' && url.pathname === '/v1/pair') {
       const input = await readJson(request);
-      pairingPromise ||= Promise.resolve(approvePairing({
-        origin,
-        clientName: String(input.clientName || 'Browser').slice(0, 80)
-      })).finally(() => { pairingPromise = null; });
-      if (!await pairingPromise) {
+      const clientName = String(input.clientName || 'Browser').slice(0, 80);
+      const pairingKey = `${origin}\n${clientName}`;
+      if (pairingRequest && pairingRequest.key !== pairingKey) {
+        json(response, 409, { error: 'Another browser connection is awaiting approval.' }, origin);
+        return;
+      }
+      if (!pairingRequest) {
+        const current = {
+          key: pairingKey,
+          promise: Promise.resolve(approvePairing({ origin, clientName }))
+        };
+        pairingRequest = current;
+        current.promise.finally(() => {
+          if (pairingRequest === current) pairingRequest = null;
+        });
+      }
+      if (!await pairingRequest.promise) {
         json(response, 403, { error: 'Pairing was not approved in Clips.' }, origin);
         return;
       }
