@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.20",
     "title": "Release archive cleanup",
     "changes": [
       "GitHub's full release history now keeps nightly builds in numeric order across every page while existing Clips download addresses continue to work."
