@@ -3,7 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 const { promisify } = require('util');
-const { verifyMetadata } = require('../scripts/update-signature');
+const { verifyMetadata, verifyPackageMetadata } = require('../scripts/update-signature');
 const UPDATE_PUBLIC_KEY = fs.readFileSync(path.join(__dirname, 'update-signing-public.pem'));
 
 const execFileAsync = promisify(execFile);
@@ -288,7 +288,7 @@ async function promotePreparedDirectory(source, destination, {
   copy = fs.promises.cp,
   remove = removeWithRetries,
   stat = fs.promises.stat,
-  wait = delay => new Promise(resolve => setTimeout(resolve, delay))
+  wait = delay => new Promise(resolve => setTimeout(resolve, delay)), expectedAsarSha512 = ''
 } = {}) {
   try {
     await renameWithRetries(source, destination, { rename, wait, attempts: 4 });
@@ -304,6 +304,10 @@ async function promotePreparedDirectory(source, destination, {
   if ((await stat(executable)).size <= 0 || (await stat(asar)).size <= 0) {
     await remove(destination, { recursive: true }).catch(() => {});
     throw new Error('The promoted update is incomplete.');
+  }
+  if (expectedAsarSha512 && await sha512(asar) !== expectedAsarSha512) {
+    await remove(destination, { recursive: true }).catch(() => {});
+    throw new Error('The promoted application package failed its integrity check.');
   }
   await remove(source, { recursive: true }).catch(() => {});
 }
@@ -400,6 +404,7 @@ async function findPreparedUpdate(app, metadata) {
         && prepared.sha512 === metadata.sha512
         && fs.statSync(executable).size > 0
         && fs.statSync(asar).size > 0
+        && (!metadata.asarSha512 || await sha512(asar) === metadata.asarSha512)
       ) {
         candidates.push({
           version: metadata.version,
@@ -427,11 +432,13 @@ function validateMetadata(value) {
   if (!Number.isSafeInteger(size) || size <= 0) {
     throw new Error('The update feed returned an invalid package size.');
   }
-  return { version: value.version, url: value.url, sha512: value.sha512, size };
+  const asarSha512 = typeof value.asarSha512 === 'string' ? value.asarSha512 : '';
+  return { version: value.version, url: value.url, sha512: value.sha512, size, ...(asarSha512 ? { asarSha512 } : {}) };
 }
 
 function authenticateMetadata(value, publicKey = UPDATE_PUBLIC_KEY) {
   if (!verifyMetadata(value, publicKey)) throw new Error('The update feed signature is invalid.');
+  if (value?.asarSha512 && !verifyPackageMetadata(value, publicKey)) throw new Error('The update package signature is invalid.');
   return validateMetadata(value);
 }
 
@@ -493,9 +500,11 @@ function createStagedUpdater({ app, feedUrl, onState }) {
       await fs.promises.writeFile(path.join(destination, '.clips-update.json'), JSON.stringify({
         version: metadata.version,
         sha512: metadata.sha512,
+        asarSha512: metadata.asarSha512,
         preparedAt: new Date().toISOString()
       }, null, 2));
-      await promotePreparedDirectory(destination, finalDestination);
+      if (metadata.asarSha512 && await sha512(extractedAsar) !== metadata.asarSha512) throw new Error('The extracted application package failed its integrity check.');
+      await promotePreparedDirectory(destination, finalDestination, { expectedAsarSha512: metadata.asarSha512 });
       prepared = true;
       return {
         version: metadata.version,

@@ -43,11 +43,18 @@ try {
 }
 
 $item = Get-Item -LiteralPath $archive
+$asarStream = [IO.File]::OpenRead((Join-Path $source 'resources\app.asar'))
+try {
+    $asarAlgorithm = [Security.Cryptography.SHA512]::Create()
+    try { $asarHash = [Convert]::ToBase64String($asarAlgorithm.ComputeHash($asarStream)) }
+    finally { $asarAlgorithm.Dispose() }
+} finally { $asarStream.Dispose() }
 $metadata = [ordered]@{
     version = $Version
     url = $fileName
     sha512 = $hash
     size = $item.Length
+    asarSha512 = $asarHash
     releaseDate = [DateTime]::UtcNow.ToString('o')
 } | ConvertTo-Json
 [IO.File]::WriteAllText($metadataPath, "$metadata`n", [Text.UTF8Encoding]::new($false))

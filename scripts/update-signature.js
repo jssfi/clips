@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const SIGNED_FIELDS = ['version', 'url', 'sha512', 'size', 'releaseDate'];
+const PACKAGE_SIGNED_FIELDS = [...SIGNED_FIELDS, 'asarSha512'];
 
 function signedPayload(metadata) {
   const value = {};
@@ -10,6 +11,16 @@ function signedPayload(metadata) {
 
 function signMetadata(metadata, privateKey) {
   return crypto.sign(null, signedPayload(metadata), privateKey).toString('base64');
+}
+function packagePayload(metadata) {
+  const value = {};
+  for (const field of PACKAGE_SIGNED_FIELDS) value[field] = metadata[field];
+  return Buffer.from(JSON.stringify(value), 'utf8');
+}
+function signPackageMetadata(metadata, privateKey) { return crypto.sign(null, packagePayload(metadata), privateKey).toString('base64'); }
+function verifyPackageMetadata(metadata, publicKey) {
+  try { return typeof metadata?.packageSignature === 'string' && crypto.verify(null, packagePayload(metadata), publicKey, Buffer.from(metadata.packageSignature, 'base64')); }
+  catch { return false; }
 }
 
 function verifyMetadata(metadata, publicKey) {
@@ -21,4 +32,4 @@ function verifyMetadata(metadata, publicKey) {
   }
 }
 
-module.exports = { signedPayload, signMetadata, verifyMetadata };
+module.exports = { signedPayload, signMetadata, verifyMetadata, packagePayload, signPackageMetadata, verifyPackageMetadata };

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { signMetadata } = require('../scripts/update-signature');
+const { signMetadata, signPackageMetadata } = require('../scripts/update-signature');
 const {
   compareVersions,
   cleanupOldVersionDirectories,
@@ -124,6 +124,15 @@ test('authenticateMetadata accepts only metadata signed by the trusted key', () 
   assert.equal(authenticateMetadata(metadata, publicKey).version, '0.1.12');
   assert.throws(() => authenticateMetadata({ ...metadata, size: 124 }, publicKey), /signature/i);
   assert.throws(() => authenticateMetadata({ ...metadata, signature: '' }, publicKey), /signature/i);
+});
+
+test('package integrity metadata has an additive signature compatible with legacy feeds', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+  const metadata = { version: '0.5.0-nightly.11.abcdef12', url: 'jss-clips-app-0.5.0-nightly.11.abcdef12-x64.zip', sha512: 'archive', asarSha512: 'asar', size: 123, releaseDate: '2026-08-17T00:00:00.000Z' };
+  metadata.signature = signMetadata(metadata, privateKey);
+  metadata.packageSignature = signPackageMetadata(metadata, privateKey);
+  assert.equal(authenticateMetadata(metadata, publicKey).asarSha512, 'asar');
+  assert.throws(() => authenticateMetadata({ ...metadata, asarSha512: 'tampered' }, publicKey), /package signature/i);
 });
 
 test('restart confirmation requires the exact prepared update metadata', () => {
