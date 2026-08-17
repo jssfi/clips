@@ -1,4 +1,6 @@
 const fs = require('fs');
+let rawFs = fs;
+try { rawFs = require('original-fs'); } catch {}
 const path = require('path');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
@@ -108,7 +110,7 @@ function redirectToActiveVersion(app) {
 async function sha512(filePath) {
   const hash = crypto.createHash('sha512');
   await new Promise((resolve, reject) => {
-    const input = fs.createReadStream(filePath);
+    const input = rawFs.createReadStream(filePath);
     input.on('data', chunk => hash.update(chunk));
     input.on('error', reject);
     input.on('end', resolve);
@@ -241,7 +243,7 @@ function isPreparationDirectory(name) {
 async function removeWithRetries(target, { recursive = false } = {}) {
   for (let attempt = 0; attempt <= 8; attempt += 1) {
     try {
-      await fs.promises.rm(target, { recursive, force: true });
+      await rawFs.promises.rm(target, { recursive, force: true });
       return;
     } catch (error) {
       if (!RETRYABLE_FILE_ERRORS.has(error?.code) || attempt === 8) throw error;
@@ -253,7 +255,7 @@ async function removeWithRetries(target, { recursive = false } = {}) {
 async function cleanupStalePreparations(versions, { protectedDirectories = [] } = {}) {
   let entries;
   try {
-    entries = await fs.promises.readdir(versions, { withFileTypes: true });
+    entries = await rawFs.promises.readdir(versions, { withFileTypes: true });
   } catch {
     return;
   }
@@ -262,7 +264,7 @@ async function cleanupStalePreparations(versions, { protectedDirectories = [] } 
   for (const entry of entries) {
     if (!entry.isDirectory() || !isPreparationDirectory(entry.name) || protectedNames.has(entry.name)) continue;
     try {
-      const stat = await fs.promises.stat(path.join(versions, entry.name));
+      const stat = await rawFs.promises.stat(path.join(versions, entry.name));
       if (Date.now() - stat.mtimeMs >= STALE_PREPARATION_AGE_MS) stale.push(entry.name);
     } catch {}
   }
@@ -270,7 +272,7 @@ async function cleanupStalePreparations(versions, { protectedDirectories = [] } 
 }
 
 async function renameWithRetries(source, destination, {
-  rename = fs.promises.rename,
+  rename = rawFs.promises.rename,
   wait = delay => new Promise(resolve => setTimeout(resolve, delay)),
   attempts = 20
 } = {}) {
@@ -286,10 +288,10 @@ async function renameWithRetries(source, destination, {
 }
 
 async function promotePreparedDirectory(source, destination, {
-  rename = fs.promises.rename,
-  copy = fs.promises.cp,
+  rename = rawFs.promises.rename,
+  copy = rawFs.promises.cp,
   remove = removeWithRetries,
-  stat = fs.promises.stat,
+  stat = rawFs.promises.stat,
   wait = delay => new Promise(resolve => setTimeout(resolve, delay)), expectedAsarSha512 = ''
 } = {}) {
   try {
@@ -316,7 +318,7 @@ async function promotePreparedDirectory(source, destination, {
 
 async function cleanupInvalidPreparedVersions(versions, { protectedDirectories = [] } = {}) {
   let entries;
-  try { entries = await fs.promises.readdir(versions, { withFileTypes: true }); }
+  try { entries = await rawFs.promises.readdir(versions, { withFileTypes: true }); }
   catch { return; }
   const protectedNames = new Set(protectedDirectories.filter(Boolean));
   await Promise.allSettled(entries.filter(entry => (
@@ -326,11 +328,11 @@ async function cleanupInvalidPreparedVersions(versions, { protectedDirectories =
   )).map(async entry => {
     const directory = path.join(versions, entry.name);
     try {
-      const marker = JSON.parse(await fs.promises.readFile(path.join(directory, '.clips-update.json'), 'utf8'));
+      const marker = JSON.parse(await rawFs.promises.readFile(path.join(directory, '.clips-update.json'), 'utf8'));
       if (!parseVersion(marker.version)
         || !isVersionDirectory(entry.name, marker.version)
-        || (await fs.promises.stat(path.join(directory, APP_EXECUTABLE))).size <= 0
-        || (await fs.promises.stat(path.join(directory, 'resources', 'app.asar'))).size <= 0) throw new Error('invalid');
+          || (await rawFs.promises.stat(path.join(directory, APP_EXECUTABLE))).size <= 0
+          || (await rawFs.promises.stat(path.join(directory, 'resources', 'app.asar'))).size <= 0) throw new Error('invalid');
     } catch {
       await removeWithRetries(directory, { recursive: true });
     }
@@ -343,7 +345,7 @@ async function cleanupOldVersionDirectories(versions, {
 } = {}) {
   let entries;
   try {
-    entries = await fs.promises.readdir(versions, { withFileTypes: true });
+    entries = await rawFs.promises.readdir(versions, { withFileTypes: true });
   } catch {
     return;
   }
@@ -352,7 +354,7 @@ async function cleanupOldVersionDirectories(versions, {
   for (const entry of entries) {
     if (!entry.isDirectory() || !VERSION_DIRECTORY.test(entry.name)) continue;
     try {
-      const stat = await fs.promises.stat(path.join(versions, entry.name));
+      const stat = await rawFs.promises.stat(path.join(versions, entry.name));
       candidates.push({ name: entry.name, modified: stat.mtimeMs });
     } catch {
       // A concurrently removed version needs no further cleanup.
@@ -387,7 +389,7 @@ async function findPreparedUpdate(app, metadata) {
   const versions = path.join(updateRoot(app), 'app-versions');
   let entries;
   try {
-    entries = await fs.promises.readdir(versions, { withFileTypes: true });
+    entries = await rawFs.promises.readdir(versions, { withFileTypes: true });
   } catch {
     return null;
   }
@@ -398,14 +400,14 @@ async function findPreparedUpdate(app, metadata) {
     const executable = path.join(directory, APP_EXECUTABLE);
     const asar = path.join(directory, 'resources', 'app.asar');
     try {
-      const prepared = JSON.parse(await fs.promises.readFile(
+      const prepared = JSON.parse(await rawFs.promises.readFile(
         path.join(directory, '.clips-update.json'), 'utf8'
       ));
       if (
         prepared.version === metadata.version
         && prepared.sha512 === metadata.sha512
-        && fs.statSync(executable).size > 0
-        && fs.statSync(asar).size > 0
+        && rawFs.statSync(executable).size > 0
+        && rawFs.statSync(asar).size > 0
         && (!metadata.asarSha512 || await sha512(asar) === metadata.asarSha512)
       ) {
         candidates.push({
@@ -452,14 +454,44 @@ function preparedUpdateMatches(prepared, metadata) {
     && prepared.size === metadata.size);
 }
 
-function createStagedUpdater({ app, feedUrl, onState }) {
+function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () => {} }) {
   let operation = null;
   let readyUpdate = null;
   let readyMetadata = null;
 
-  const emit = next => onState(next);
+  const trace = (level, event, details = {}) => {
+    const entry = { time: new Date().toISOString(), level, event, pid: process.pid, details };
+    onDiagnostic(entry);
+    logger?.[level]?.(`staged updater ${event}`, details);
+  };
+  const emit = next => { trace('info', 'state', next); onState(next); };
   const sevenZip = () => path.join(process.resourcesPath, 'tools', '7za.exe');
-  const startupCleanup = cleanupOldVersions(app).catch(() => {});
+  const snapshot = async (label, directory) => {
+    const inspect = async (api, file) => {
+      try {
+        const stat = await api.promises.stat(file);
+        return { exists: true, size: stat.size, directory: stat.isDirectory(), modified: stat.mtime?.toISOString() };
+      } catch (error) {
+        return { exists: false, code: error?.code, message: error?.message };
+      }
+    };
+    let resources = [];
+    try { resources = (await rawFs.promises.readdir(path.join(directory, 'resources'))).slice(0, 40); }
+    catch (error) { resources = [`<${error?.code || error}>`]; }
+    trace('info', `snapshot ${label}`, {
+      directory,
+      executable: await inspect(rawFs, path.join(directory, APP_EXECUTABLE)),
+      asarRaw: await inspect(rawFs, path.join(directory, 'resources', 'app.asar')),
+      asarElectron: await inspect(fs, path.join(directory, 'resources', 'app.asar')),
+      resources
+    });
+  };
+  trace('info', 'created', { appVersion: app.getVersion(), feedUrl, executable: process.execPath, resourcesPath: process.resourcesPath, rawFilesystem: rawFs !== fs });
+  const startupCleanup = (async () => {
+    trace('info', 'startup cleanup begin');
+    await cleanupOldVersions(app);
+    trace('info', 'startup cleanup complete');
+  })().catch(error => trace('warn', 'startup cleanup failed', { code: error?.code, message: error?.message, stack: error?.stack }));
 
   async function download(metadata) {
     const root = updateRoot(app);
@@ -467,16 +499,12 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     const versions = path.join(root, 'app-versions');
     const operationId = `${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const archive = path.join(downloads, `${metadata.url}.${operationId}.download`);
-    const directoryName = `${metadata.version}.app-${operationId}`;
-    const preparationName = `${metadata.version}.preparing-${operationId}`;
-    const destination = path.join(versions, preparationName);
-    const finalDestination = versionDirectory(app, metadata.version, directoryName);
-    let prepared = false;
-    await fs.promises.mkdir(downloads, { recursive: true });
-    await fs.promises.mkdir(versions, { recursive: true });
-    await cleanupStalePreparations(versions, { protectedDirectories: [preparationName] });
+    await rawFs.promises.mkdir(downloads, { recursive: true });
+    await rawFs.promises.mkdir(versions, { recursive: true });
+    await cleanupStalePreparations(versions);
 
     try {
+      trace('info', 'download begin', { version: metadata.version, url: metadata.url, size: metadata.size, archive });
       let lastPercent = -1;
       await downloadUpdateArchive(`${feedUrl}/${metadata.url}`, archive, metadata.size, received => {
         const percent = Math.min(99, Math.floor(received / metadata.size * 100));
@@ -486,46 +514,72 @@ function createStagedUpdater({ app, feedUrl, onState }) {
         }
       });
       emit({ status: 'preparing', version: metadata.version, percent: 100, message: 'Preparing update…' });
-      if ((await sha512(archive)) !== metadata.sha512) {
+      trace('info', 'download complete', { archive, size: (await rawFs.promises.stat(archive)).size });
+      const archiveHash = await sha512(archive);
+      trace('info', 'archive hashed', { matches: archiveHash === metadata.sha512 });
+      if (archiveHash !== metadata.sha512) {
         throw new Error('The downloaded update failed its integrity check.');
       }
-      if (!fs.existsSync(sevenZip())) throw new Error('The bundled update extractor is missing.');
-      await execFileAsync(sevenZip(), ['x', '-y', `-o${destination}`, archive], {
-        windowsHide: true,
-        maxBuffer: 4 * 1024 * 1024
-      });
-      const extractedExecutable = path.join(destination, APP_EXECUTABLE);
-      const extractedAsar = path.join(destination, 'resources', 'app.asar');
-      if (!fs.existsSync(extractedExecutable) || !fs.existsSync(extractedAsar)) {
-        throw new Error('The prepared update is incomplete.');
+      if (!rawFs.existsSync(sevenZip())) throw new Error('The bundled update extractor is missing.');
+      let lastError;
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const attemptId = `${operationId}-try${attempt}`;
+        const directoryName = `${metadata.version}.app-${attemptId}`;
+        const preparationName = `${metadata.version}.preparing-${attemptId}`;
+        const destination = path.join(versions, preparationName);
+        const finalDestination = versionDirectory(app, metadata.version, directoryName);
+        try {
+          trace('info', 'extraction begin', { attempt, destination });
+          const extraction = await execFileAsync(sevenZip(), ['x', '-y', `-o${destination}`, archive], {
+            windowsHide: true,
+            maxBuffer: 4 * 1024 * 1024
+          });
+          trace('info', 'extraction complete', { attempt, stdout: extraction.stdout, stderr: extraction.stderr });
+          await snapshot(`after extraction attempt ${attempt}`, destination);
+          const extractedExecutable = path.join(destination, APP_EXECUTABLE);
+          const extractedAsar = path.join(destination, 'resources', 'app.asar');
+          if (!rawFs.existsSync(extractedExecutable) || !rawFs.existsSync(extractedAsar)) throw new Error('The prepared update is incomplete.');
+          const asarHash = metadata.asarSha512 ? await sha512(extractedAsar) : '';
+          trace('info', 'asar hashed with original-fs', { attempt, matches: !metadata.asarSha512 || asarHash === metadata.asarSha512, size: rawFs.statSync(extractedAsar).size });
+          if (metadata.asarSha512 && asarHash !== metadata.asarSha512) throw new Error('The extracted application package failed its integrity check.');
+          await rawFs.promises.writeFile(path.join(destination, '.clips-update.json'), JSON.stringify({
+            version: metadata.version,
+            sha512: metadata.sha512,
+            asarSha512: metadata.asarSha512,
+            preparedAt: new Date().toISOString()
+          }, null, 2));
+          trace('info', 'promotion begin', { attempt, destination, finalDestination });
+          await promotePreparedDirectory(destination, finalDestination, { expectedAsarSha512: metadata.asarSha512 });
+          await snapshot(`after promotion attempt ${attempt}`, finalDestination);
+          trace('info', 'preparation complete', { attempt, directoryName });
+          return { version: metadata.version, directory: directoryName, executable: versionExecutable(app, metadata.version, directoryName) };
+        } catch (error) {
+          lastError = error;
+          trace('error', 'preparation attempt failed', { attempt, destination, code: error?.code, errno: error?.errno, syscall: error?.syscall, path: error?.path, message: error?.message, stack: error?.stack });
+          await snapshot(`failed attempt ${attempt}`, destination);
+          await rawFs.promises.mkdir(destination, { recursive: true }).catch(() => {});
+          await rawFs.promises.writeFile(path.join(destination, '.clips-failure.json'), JSON.stringify({
+            time: new Date().toISOString(), attempt, code: error?.code, errno: error?.errno, syscall: error?.syscall,
+            path: error?.path, message: error?.message, stack: error?.stack
+          }, null, 2)).catch(() => {});
+          if (attempt < 5) await new Promise(resolve => setTimeout(resolve, attempt * 500));
+        }
       }
-      await fs.promises.writeFile(path.join(destination, '.clips-update.json'), JSON.stringify({
-        version: metadata.version,
-        sha512: metadata.sha512,
-        asarSha512: metadata.asarSha512,
-        preparedAt: new Date().toISOString()
-      }, null, 2));
-      if (metadata.asarSha512 && await sha512(extractedAsar) !== metadata.asarSha512) throw new Error('The extracted application package failed its integrity check.');
-      await promotePreparedDirectory(destination, finalDestination, { expectedAsarSha512: metadata.asarSha512 });
-      prepared = true;
-      return {
-        version: metadata.version,
-        directory: directoryName,
-        executable: versionExecutable(app, metadata.version, directoryName)
-      };
+      throw lastError || new Error('Update preparation failed after five attempts.');
     } finally {
       await removeWithRetries(archive).catch(() => {});
-      if (!prepared) await removeWithRetries(destination, { recursive: true }).catch(() => {});
     }
   }
 
   async function performCheck() {
     await startupCleanup;
     emit({ status: 'checking', message: '', percent: 0 });
+    trace('info', 'metadata request begin', { url: `${feedUrl}/latest.json` });
     const metadata = await withFetchTimeout(fetch, `${feedUrl}/latest.json`, { cache: 'no-store' }, async response => {
       if (!response.ok) throw new Error(`Update check failed (${response.status}).`);
       return authenticateMetadata(await response.json());
     }, METADATA_TIMEOUT_MS);
+    trace('info', 'metadata authenticated', { version: metadata.version, url: metadata.url, size: metadata.size, hasAsarHash: !!metadata.asarSha512 });
     if (compareVersions(metadata.version, app.getVersion()) <= 0) {
       readyUpdate = null;
       readyMetadata = null;
@@ -533,6 +587,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
       return false;
     }
     readyUpdate = await findPreparedUpdate(app, metadata);
+    trace('info', readyUpdate ? 'prepared update reused' : 'prepared update not found', readyUpdate || { version: metadata.version });
     if (!readyUpdate) readyUpdate = await download(metadata);
     readyMetadata = metadata;
     emit({ status: 'ready', version: metadata.version, percent: 100, message: 'Restart to update' });
@@ -543,6 +598,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
     if (operation) return operation;
     operation = performCheck()
       .catch(error => {
+        trace('error', 'check failed', { code: error?.code, errno: error?.errno, syscall: error?.syscall, path: error?.path, message: error?.message, stack: error?.stack });
         emit({ status: 'error', percent: 0, message: error?.message || String(error) });
         return false;
       })
@@ -551,7 +607,11 @@ function createStagedUpdater({ app, feedUrl, onState }) {
   }
 
   async function restart(beforeRestart = async () => {}) {
-    if (!readyUpdate || !fs.existsSync(readyUpdate.executable)) return false;
+    trace('info', 'restart requested', { readyUpdate, hasMetadata: !!readyMetadata });
+    if (!readyUpdate || !rawFs.existsSync(readyUpdate.executable)) {
+      trace('error', 'restart rejected: executable missing', { readyUpdate });
+      return false;
+    }
     let currentMetadata;
     try {
       currentMetadata = await withFetchTimeout(fetch, `${feedUrl}/latest.json`, { cache: 'no-store' }, async response => {
@@ -577,6 +637,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
       return false;
     }
     await beforeRestart();
+    trace('info', 'capture shutdown complete');
     const pointer = activeVersionPath(app);
     await fs.promises.mkdir(path.dirname(pointer), { recursive: true });
     await fs.promises.writeFile(pointer, `${JSON.stringify({
@@ -584,8 +645,10 @@ function createStagedUpdater({ app, feedUrl, onState }) {
       directory: readyUpdate.directory,
       activatedAt: new Date().toISOString()
     }, null, 2)}\n`);
+    trace('info', 'active pointer written', { pointer, readyUpdate });
     app.isQuitting = true;
     app.relaunch({ execPath: readyUpdate.executable, args: updateRelaunchArgs() });
+    trace('info', 'relaunch requested', { execPath: readyUpdate.executable, args: updateRelaunchArgs() });
     app.exit(0);
     return true;
   }

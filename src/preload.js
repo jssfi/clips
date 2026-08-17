@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('clips', {
   getState: () => ipcRenderer.invoke('state:get'),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  copyUpdateDiagnostics: () => ipcRenderer.invoke('update:copy-diagnostics'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   beginHotkeyCapture: () => ipcRenderer.invoke('hotkey:capture-start'),
   cancelHotkeyCapture: () => ipcRenderer.invoke('hotkey:capture-cancel'),

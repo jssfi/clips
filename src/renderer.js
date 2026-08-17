@@ -761,6 +761,12 @@ $("check-updates").onclick = async () => {
   }
 };
 $("open-logs").onclick = () => window.clips.openLogs();
+$("copy-update-diagnostics").onclick = async () => {
+  await window.clips.copyUpdateDiagnostics();
+  const button = $("copy-update-diagnostics");
+  button.textContent = "Copied";
+  setTimeout(() => { button.textContent = "Copy diagnostics"; }, 1500);
+};
 const openRecording = async (event) => {
   const card = event.target.closest("[data-recording-path]");
   if (!card) return;

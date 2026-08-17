@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Forensic staged updater",
+    "changes": [
+      "Staged updates now use Electron's raw filesystem for app.asar, retry preparation five times, preserve failed attempts, and record detailed sanitized diagnostics that can be copied from Settings."
+    ]
+  },
+  {
     "version": "0.5-nightly.15",
     "title": "Classic installer updates restored",
     "changes": [

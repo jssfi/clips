@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, globalShortcut, nativeImage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -9,10 +9,10 @@ const { promisify } = require('util');
 const { ObsController } = require('./obs');
 const buildInfo = require('./build-info.json');
 const { RUNTIME_VERSION, runtimeRoot, isRuntimeReady, ensureRuntimeInstalled } = require('./runtime');
-const { createInstallerUpdater } = require('./installer-updater');
+const { redirectToActiveVersion, createStagedUpdater } = require('./updater');
 const { createTrayController } = require('./tray-controller');
 const { MPV_QUIT_ON_FULLSCREEN_EXIT_SCRIPT, mpvFullscreenArgs } = require('./mpv-fullscreen');
-const { createLogger } = require('./logger');
+const { createLogger, redactLogText } = require('./logger');
 const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
 const { configuredEndpoint, loadInstallationId, createTelemetry } = require('./telemetry');
 const { parseProcessList } = require('./process-list');
@@ -26,7 +26,8 @@ const changelog = require('./changelog.json');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
 app.setPath('userData', path.join(app.getPath('appData'), 'Clips'));
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const redirectedToActiveVersion = redirectToActiveVersion(app);
+const gotSingleInstanceLock = !redirectedToActiveVersion && app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) app.quit();
 
 const execFileAsync = promisify(execFile);
@@ -66,7 +67,8 @@ let updateState = { status: 'idle', version: app.getVersion(), percent: 0, messa
 let updateCheckTimer = null;
 let updateCheckTimeout = null;
 let updateConfigurationGeneration = 0;
-let installerUpdater = null;
+let stagedUpdater = null;
+const updateDiagnostics = [];
 let runtimeSetupPromise = Promise.resolve();
 const logger = createLogger({ directory: path.join(app.getPath('userData'), 'logs') });
 const trayController = createTrayController({ getWindow: () => win });
@@ -1056,6 +1058,25 @@ function setUpdateState(next) {
   updateState = { ...updateState, ...next, ...(next.version ? { version: displayVersion(next.version) } : {}) };
   broadcast().catch(() => {});
 }
+function recordUpdateDiagnostic(entry) {
+  updateDiagnostics.push(entry);
+  if (updateDiagnostics.length > 250) updateDiagnostics.shift();
+}
+function copyUpdateDiagnostics() {
+  const header = {
+    appVersion: app.getVersion(),
+    displayedVersion: displayVersion(app.getVersion()),
+    packaged: app.isPackaged,
+    channel: settings?.nightlyUpdates ? 'nightly' : 'stable',
+    feedUrl: updateFeedUrl(),
+    updateState,
+    executable: process.execPath
+  };
+  const text = redactLogText(`${JSON.stringify(header, null, 2)}\n\n${updateDiagnostics.map(entry => JSON.stringify(entry)).join('\n')}`);
+  clipboard.writeText(text);
+  logger.info('updater diagnostics copied', { entries: updateDiagnostics.length });
+  return true;
+}
 function updateFeedUrl() {
   if (process.env.CLIPS_UPDATE_URL) return String(process.env.CLIPS_UPDATE_URL).trim().replace(/\/+$/, '');
   const configuredUrl = DEFAULT_UPDATE_URL.trim().replace(/\/+$/, '');
@@ -1067,8 +1088,7 @@ function configureUpdates() {
   clearInterval(updateCheckTimer);
   updateCheckTimeout = null;
   updateCheckTimer = null;
-  installerUpdater?.dispose();
-  installerUpdater = null;
+  stagedUpdater = null;
   const generation = ++updateConfigurationGeneration;
   updateState = {
     status: 'idle',
@@ -1093,13 +1113,16 @@ function configureUpdates() {
   const updateUrl = updateFeedUrl();
   if (!updateUrl) return;
   updateState.configured = true;
-  installerUpdater = createInstallerUpdater({
+  stagedUpdater = createStagedUpdater({
+    app,
     feedUrl: updateUrl,
+    logger,
+    onDiagnostic: recordUpdateDiagnostic,
     onState: next => {
       if (generation === updateConfigurationGeneration) setUpdateState(next);
     }
   });
-  const check = () => installerUpdater?.check();
+  const check = () => stagedUpdater?.check();
   updateCheckTimeout = setTimeout(check, 3000);
   updateCheckTimer = setInterval(check, 15 * 60 * 1000);
 }
@@ -1308,7 +1331,7 @@ async function installUpdate() {
     app.exit(0);
     return true;
   }
-  return installerUpdater?.restart(async () => {
+  return stagedUpdater?.restart(async () => {
     const capture = await obs.status();
     if (capture.recording || capture.replayBuffer) {
       await obs.stopSession().catch(error => logger.warn('capture stop before update failed', { message: error.message }));
@@ -1320,7 +1343,7 @@ async function installUpdate() {
 
 function checkForUpdates() {
   if (!app.isPackaged || !updateFeedUrl() || ['checking', 'downloading', 'preparing', 'ready'].includes(updateState.status)) return false;
-  installerUpdater?.check();
+  stagedUpdater?.check();
   return true;
 }
 
@@ -1560,6 +1583,7 @@ async function gatewayInvoke(method, args) {
     mixRecordingAudio: () => mixRecordingAction(args[0], args[1], args[2]),
     chooseFolder,
     openLogs: () => { shell.showItemInFolder(logger.filePath); return true; },
+    copyUpdateDiagnostics,
     listProcesses: processes
   };
   if (!Object.hasOwn(actions, method)) throw new Error('This Clips action is not available in the browser.');
@@ -1653,6 +1677,7 @@ app.on('will-quit', () => { logger.info('application quitting'); if (microphoneV
 ipcMain.handle('state:get', state);
 ipcMain.handle('update:install', installUpdate);
 ipcMain.handle('update:check', checkForUpdates);
+ipcMain.handle('update:copy-diagnostics', copyUpdateDiagnostics);
 ipcMain.handle('hotkey:capture-start', () => {
   globalShortcut.unregisterAll();
   return true;

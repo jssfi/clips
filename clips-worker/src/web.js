@@ -279,6 +279,7 @@
     getState,
     installUpdate: use('installUpdate', () => desktopOnly('Installing updates')),
     checkForUpdates: use('checkForUpdates', async () => false),
+    copyUpdateDiagnostics: use('copyUpdateDiagnostics', () => desktopOnly('Copying update diagnostics')),
     saveSettings: use('saveSettings', async settings => { demoState.settings = { ...demoState.settings, ...settings }; demoEmit(); return clone(demoState); }),
     beginHotkeyCapture: use('beginHotkeyCapture', async () => true),
     cancelHotkeyCapture: use('cancelHotkeyCapture', async () => true),
