@@ -1,8 +1,10 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.13",
     "title": "Update preparation protected from cleanup",
-    "changes": ["Startup cleanup now completes before downloading updates and never removes a fresh preparation folder owned by an overlapping updater process."]
+    "changes": [
+      "Startup cleanup now completes before downloading updates and never removes a fresh preparation folder owned by an overlapping updater process."
+    ]
   },
   {
     "version": "0.5-nightly.12",
