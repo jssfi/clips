@@ -21,6 +21,7 @@ const { parseProcessList } = require('./process-list');
 const { candidateKey, updateCandidateHistory } = require('./game-candidates');
 const { displayVersion } = require('./version');
 const { LibraryMetadata, storageInsights, concatManifest } = require('./library');
+const { createRecordingLibrary } = require('./recording-library');
 const { createGateway, DEFAULT_GATEWAY_PORT } = require('./gateway');
 const changelog = require('./changelog.json');
 
@@ -103,29 +104,16 @@ let captureWarningWindow = { startedAt: 0, renderingLag: 0, encoderDrops: 0 };
 let lastProblemOverlay = { message: '', time: 0 };
 const obs = new ObsController(() => broadcast(), logger);
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
-const favoritesPath = () => path.join(app.getPath('userData'), 'favorites.json');
-let favoriteRecordingKeys = new Set();
-function recordingKey(filePath) {
-  const relative = path.relative(path.resolve(settings.recordingsFolder), path.resolve(String(filePath || '')));
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return '';
-  return relative.replace(/\\/g, '/').toLowerCase();
-}
-function loadFavorites() {
-  try { favoriteRecordingKeys = new Set(JSON.parse(fs.readFileSync(favoritesPath(), 'utf8')).map(String)); }
-  catch { favoriteRecordingKeys = new Set(); }
-}
-function persistFavorites() {
-  const target = favoritesPath();
-  const temporary = `${target}.working`;
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(temporary, `${JSON.stringify([...favoriteRecordingKeys].sort(), null, 2)}\n`);
-  fs.renameSync(temporary, target);
-}
-function isFavoriteRecording(filePath) { return favoriteRecordingKeys.has(recordingKey(filePath)); }
-function enrichRecording(recording) {
-  const metadata = libraryMetadata?.get(recording.path) || {};
-  return { ...recording, ...metadata, title: metadata.title || recording.name, tags: metadata.tags || [], markers: metadata.markers || [], game: metadata.game || '' };
-}
+const recordingLibrary = createRecordingLibrary({
+  getSettings: () => settings,
+  getMetadata: () => libraryMetadata,
+  favoritesPath: () => path.join(app.getPath('userData'), 'favorites.json')
+});
+const { isRawRecordingName } = recordingLibrary;
+const cleanupStorage = () => recordingLibrary.cleanupStorage(ensureDirectory);
+const recentRecordings = () => recordingLibrary.recentRecordings();
+const archivedRecordings = () => recordingLibrary.archivedRecordings();
+const validateRecordingPath = filePath => recordingLibrary.validatePath(filePath);
 function captureRuntimeRoot() {
   return app.isPackaged ? persistentRuntimeRoot : path.join(__dirname, '..', 'vendor');
 }
@@ -278,101 +266,6 @@ function finalizeSessionMetadata() {
     if (candidates[0]) libraryMetadata.update(candidates[0].path, { markers: sessionMarkers, game: sessionGame });
   }
   sessionMarkers = []; sessionStartedAt = 0; sessionGame = '';
-}
-function isRawRecordingName(name) {
-  return /\.(mkv|mp4|mov|webm|flv)$/i.test(name)
-    && !/^Replay(?:[ _-]|$)/i.test(name)
-    && !/-trimmed(?:-\d+)?(?=\.[^.]+$)/i.test(name);
-}
-function recordingFilesByAge({ beforeToday = false } = {}) {
-  if (!fs.existsSync(settings.recordingsFolder)) return [];
-  const today = todayKey();
-  const files = [];
-  for (const item of fs.readdirSync(settings.recordingsFolder, { withFileTypes: true })) {
-    if (!item.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(item.name)
-      || (beforeToday && item.name >= today)) continue;
-    const dayFolder = path.join(settings.recordingsFolder, item.name);
-    for (const recording of fs.readdirSync(dayFolder, { withFileTypes: true })) {
-      if (!recording.isFile() || !isRawRecordingName(recording.name)) continue;
-      const filePath = path.join(dayFolder, recording.name);
-      const stat = fs.statSync(filePath);
-      files.push({ path: filePath, modified: stat.mtimeMs, bytes: stat.size, favorite: isFavoriteRecording(filePath) });
-    }
-  }
-  return files.sort((a, b) => a.modified - b.modified);
-}
-function rawFootageBytes() {
-  return recordingFilesByAge().reduce((total, recording) => total + recording.bytes, 0);
-}
-function diskUsagePercent() {
-  const stats = fs.statfsSync(settings.recordingsFolder);
-  if (!stats.blocks) return 0;
-  return ((stats.blocks - stats.bavail) / stats.blocks) * 100;
-}
-function cleanupStorage() {
-  ensureDirectory(settings.recordingsFolder);
-  if (settings.storageCleanupMode === 'disk') {
-    const limit = Math.min(99, Math.max(1, Number(settings.maxDiskUsagePercent) || 80));
-    const rawLimit = Math.max(1, Number(settings.maxRawRecordingGigabytes) || 250) * 1024 ** 3;
-    const isOverLimit = () => diskUsagePercent() >= limit || rawFootageBytes() > rawLimit;
-    if (!isOverLimit()) return;
-    // Never remove today's possibly-active recording, saved Replay clips, or trimmed exports.
-    for (const recording of recordingFilesByAge({ beforeToday: true })) {
-      if (recording.favorite) continue;
-      fs.rmSync(recording.path, { force: true });
-      if (!isOverLimit()) break;
-    }
-    return;
-  }
-  const cutoff = new Date(); cutoff.setHours(0, 0, 0, 0); cutoff.setDate(cutoff.getDate() - (settings.retentionDays - 1));
-  for (const item of fs.readdirSync(settings.recordingsFolder, { withFileTypes: true })) {
-    if (!item.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(item.name)) continue;
-    const date = new Date(`${item.name}T00:00:00`);
-    if (date >= cutoff) continue;
-    const dayFolder = path.join(settings.recordingsFolder, item.name);
-    for (const recording of fs.readdirSync(dayFolder, { withFileTypes: true })) {
-      if (!recording.isFile() || !isRawRecordingName(recording.name)) continue;
-      const filePath = path.join(dayFolder, recording.name);
-      if (!isFavoriteRecording(filePath)) fs.rmSync(filePath, { force: true });
-    }
-  }
-}
-function recentRecordings() {
-  const root = path.join(settings.recordingsFolder, todayKey());
-  if (!fs.existsSync(root)) return [];
-  return fs.readdirSync(root, { withFileTypes: true })
-    .filter(item => item.isFile() && /\.(mkv|mp4|mov|webm|flv)$/i.test(item.name))
-    .map(item => { const fullPath = path.join(root, item.name); const stat = fs.statSync(fullPath); return enrichRecording({ name: item.name, path: fullPath, bytes: stat.size, modified: stat.mtime.toISOString(), kind: /^Replay(?:[ _-]|$)/i.test(item.name) ? 'replay' : 'recording', favorite: isFavoriteRecording(fullPath) }); })
-    .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.modified.localeCompare(a.modified)).slice(0, 24);
-}
-function archivedRecordings() {
-  const root = settings.recordingsFolder;
-  if (!fs.existsSync(root)) return [];
-  const today = todayKey();
-  const recordings = [];
-  for (const day of fs.readdirSync(root, { withFileTypes: true })) {
-    if (!day.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(day.name) || day.name === today) continue;
-    const dayFolder = path.join(root, day.name);
-    for (const item of fs.readdirSync(dayFolder, { withFileTypes: true })) {
-      if (!item.isFile() || !/\.(mkv|mp4|mov|webm|flv)$/i.test(item.name)) continue;
-      const fullPath = path.join(dayFolder, item.name);
-      const stat = fs.statSync(fullPath);
-      recordings.push(enrichRecording({
-        name: item.name, path: fullPath, bytes: stat.size, modified: stat.mtime.toISOString(),
-        day: day.name, kind: /^Replay(?:[ _-]|$)/i.test(item.name) ? 'replay' : 'recording', favorite: isFavoriteRecording(fullPath)
-      }));
-    }
-  }
-  return recordings.sort((a, b) => b.day.localeCompare(a.day) || b.modified.localeCompare(a.modified));
-}
-function validateRecordingPath(filePath) {
-  const root = path.resolve(settings.recordingsFolder);
-  const target = path.resolve(String(filePath || ''));
-  const relative = path.relative(root, target);
-  if (relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(target) || !fs.statSync(target).isFile()) {
-    throw new Error('Recording no longer exists.');
-  }
-  return target;
 }
 function mediaContentType(filePath) {
   const extension = path.extname(filePath).toLowerCase();
@@ -1669,9 +1562,7 @@ function openRecording(filePath) {
 
 async function setRecordingFavorite(filePath, favorite) {
   const target = validateRecordingPath(filePath);
-  const key = recordingKey(target);
-  if (favorite) favoriteRecordingKeys.add(key); else favoriteRecordingKeys.delete(key);
-  persistFavorites();
+  recordingLibrary.setFavorite(target, favorite);
   await broadcast();
   return state();
 }
@@ -1708,11 +1599,11 @@ async function deleteRecordings(filePaths) {
   for (const target of targets) {
     libraryMetadata.remove(target);
     fs.rmSync(target, { force: true });
-    favoriteRecordingKeys.delete(recordingKey(target));
+    recordingLibrary.setFavorite(target, false, { persist: false });
     thumbnailPromises.delete(target);
     for (const [token, entry] of mediaTokens) if (entry.sourcePath === target) mediaTokens.delete(token);
   }
-  persistFavorites();
+  recordingLibrary.persistFavorites();
   await broadcast();
   return state();
 }
@@ -1794,7 +1685,7 @@ app.whenReady().then(async () => {
   logger.info('system information', systemInformation);
   settings = loadSettings();
   libraryMetadata = new LibraryMetadata(path.join(app.getPath('userData'), 'library.json'), settings.recordingsFolder);
-  loadFavorites();
+  recordingLibrary.loadFavorites();
   persist();
   logger.info('application ready', {
     version: app.getVersion(),

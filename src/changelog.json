@@ -1,5 +1,15 @@
 [
   {
+    "version": "next",
+    "title": "Safer installs and capture recovery",
+    "changes": [
+      "Fresh installers now include the complete browser interface.",
+      "Media runtime updates install transactionally with integrity checks and preserve the previous working runtime if installation fails.",
+      "The capture engine now cleans up safely after initialization failures and can recover without retaining partial OBS state.",
+      "Recording library and storage behavior now lives in a focused, behavior-tested service instead of the main application lifecycle module."
+    ]
+  },
+  {
     "version": "0.5-nightly.2",
     "title": "Game detection that understands fullscreen",
     "changes": [

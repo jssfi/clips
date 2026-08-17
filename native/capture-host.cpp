@@ -235,6 +235,7 @@ public:
 	{
 		if (initialized_)
 			return;
+		try {
 
 		runtime_root_ = fs::path(utf8_to_wide(obs_data_get_string(request, "runtimeRoot")));
 		config_root_ = fs::path(utf8_to_wide(obs_data_get_string(request, "configRoot")));
@@ -249,8 +250,21 @@ public:
 			throw std::runtime_error("The bundled libobs runtime is incomplete.");
 
 		SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS);
+		const DWORD current_directory_size = GetCurrentDirectoryW(0, nullptr);
+		if (!current_directory_size)
+			throw std::runtime_error("The capture host could not read its working directory.");
+		std::wstring current_directory(current_directory_size, L'\0');
+		const DWORD copied = GetCurrentDirectoryW(current_directory_size, current_directory.data());
+		if (!copied || copied >= current_directory_size)
+			throw std::runtime_error("The capture host could not read its working directory.");
+		current_directory.resize(copied);
+		previous_current_directory_ = current_directory;
 		dll_cookie_ = AddDllDirectory(bin.c_str());
-		SetCurrentDirectoryW(bin.c_str());
+		if (!dll_cookie_)
+			throw std::runtime_error("The capture runtime DLL directory could not be registered.");
+		if (!SetCurrentDirectoryW(bin.c_str()))
+			throw std::runtime_error("The capture runtime working directory could not be selected.");
+		current_directory_changed_ = true;
 		fs::create_directories(config_root_);
 		base_set_log_handler(log_handler, nullptr);
 
@@ -293,6 +307,10 @@ public:
 
 		configure_outputs(request);
 		initialized_ = true;
+		} catch (...) {
+			shutdown();
+			throw;
+		}
 	}
 
 	void configure(obs_data_t *request)
@@ -510,33 +528,40 @@ public:
 
 	void shutdown()
 	{
-		if (!obs_started())
-			return;
-		stop_noexcept();
-		if (microphone_meter_) {
-			obs_volmeter_detach_source(microphone_meter_);
-			obs_volmeter_destroy(microphone_meter_);
-			microphone_meter_ = nullptr;
-		}
-		obs_set_output_source(0, nullptr);
-		destroy_outputs();
-		obs_scene_enum_items(
-			scene_,
-			[](obs_scene_t *, obs_sceneitem_t *item, void *) {
-				obs_sceneitem_remove(item);
-				return true;
-			},
-			nullptr);
-		release_sources();
-		scene_.reset();
-		obs_wait_for_destroy_queue();
-		obs_shutdown();
-		started_ = false;
 		initialized_ = false;
+		if (obs_started()) {
+			stop_noexcept();
+			if (microphone_meter_) {
+				obs_volmeter_detach_source(microphone_meter_);
+				obs_volmeter_destroy(microphone_meter_);
+				microphone_meter_ = nullptr;
+			}
+			obs_set_output_source(0, nullptr);
+			destroy_outputs();
+			if (scene_) {
+				obs_scene_enum_items(
+					scene_,
+					[](obs_scene_t *, obs_sceneitem_t *item, void *) {
+						obs_sceneitem_remove(item);
+						return true;
+					},
+					nullptr);
+			}
+			release_sources();
+			scene_.reset();
+			session_request_.reset();
+			obs_wait_for_destroy_queue();
+			obs_shutdown();
+			started_ = false;
+		}
 		if (dll_cookie_) {
 			RemoveDllDirectory(dll_cookie_);
 			dll_cookie_ = nullptr;
 		}
+		if (current_directory_changed_ && !previous_current_directory_.empty())
+			SetCurrentDirectoryW(previous_current_directory_.c_str());
+		current_directory_changed_ = false;
+		previous_current_directory_.clear();
 	}
 
 private:
@@ -984,6 +1009,8 @@ private:
 	fs::path runtime_root_;
 	fs::path config_root_;
 	DLL_DIRECTORY_COOKIE dll_cookie_ = nullptr;
+	std::wstring previous_current_directory_;
+	bool current_directory_changed_ = false;
 	bool started_ = false;
 	bool initialized_ = false;
 	uint32_t width_ = 1920;

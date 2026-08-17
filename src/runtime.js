@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const RUNTIME_VERSION = 2;
 const LIBOBS_BIN_FILES = [
@@ -67,13 +68,71 @@ function manifestPath(root) {
   return path.join(root, 'runtime.json');
 }
 
+function fileSha256(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function runtimeHashes(root) {
+  return Object.fromEntries(REQUIRED_FILES.map(relative => [
+    relative.replaceAll('\\', '/'),
+    fileSha256(path.join(root, relative))
+  ]));
+}
+
+function hasRequiredFiles(root) {
+  try {
+    return REQUIRED_FILES.every(relative => fs.statSync(path.join(root, relative)).size > 0);
+  } catch {
+    return false;
+  }
+}
+
 function isRuntimeReady(root) {
   try {
     const manifest = JSON.parse(fs.readFileSync(manifestPath(root), 'utf8'));
     return manifest.version === RUNTIME_VERSION
-      && REQUIRED_FILES.every(relative => fs.statSync(path.join(root, relative)).size > 0);
+      && REQUIRED_FILES.every(relative => {
+        const file = path.join(root, relative);
+        if (fs.statSync(file).size <= 0) return false;
+        const expectedHash = manifest.files?.[relative.replaceAll('\\', '/')];
+        return !expectedHash || fileSha256(file) === expectedHash;
+      });
   } catch {
     return false;
+  }
+}
+
+async function replacePathAtomically(staged, destination) {
+  const backup = `${destination}.backup-${process.pid}-${crypto.randomUUID()}`;
+  let movedExisting = false;
+  try {
+    if (fs.existsSync(destination)) {
+      await fs.promises.rename(destination, backup);
+      movedExisting = true;
+    }
+    await fs.promises.rename(staged, destination);
+    if (movedExisting) {
+      // The new runtime is already live. A transient antivirus lock on the
+      // rollback copy must not turn a successful installation into a failure.
+      await fs.promises.rm(backup, { recursive: true, force: true }).catch(() => {});
+    }
+  } catch (error) {
+    if (movedExisting && !fs.existsSync(destination) && fs.existsSync(backup)) {
+      await fs.promises.rename(backup, destination);
+    }
+    throw error;
+  }
+}
+
+async function copyFileAtomically(source, destination) {
+  await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+  const staged = `${destination}.install-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    await copyFileWithRetries(source, staged);
+    if ((await fs.promises.stat(staged)).size <= 0) throw new Error(`Runtime file is empty: ${source}`);
+    await replacePathAtomically(staged, destination);
+  } finally {
+    await fs.promises.rm(staged, { force: true });
   }
 }
 
@@ -122,53 +181,58 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
       return fs.existsSync(previous) ? previous : '';
     };
     const bundledLibobs = path.join(resourcesPath, 'libobs');
+    const previousObs = path.join(previousRoot, 'obs-studio');
     const obsSource = fs.existsSync(bundledLibobs)
       ? bundledLibobs
-      : path.join(previousRoot, 'obs-studio');
+      : (fs.existsSync(previousObs) ? previousObs : '');
     const ffmpegSource = componentSource('ffmpeg');
     const libmpvSource = componentSource('libmpv');
     if (!obsSource || !ffmpegSource || !libmpvSource) {
       throw new Error('The bundled media runtime and its previous installed version are incomplete.');
     }
 
-    await fs.promises.mkdir(root, { recursive: true });
-    await copyPrivateLibobs(
-      obsSource,
-      path.join(root, 'libobs')
-    );
-    const bundledCaptureHost = path.join(resourcesPath, 'capture-host', 'clips-capture-host.exe');
-    if (fs.existsSync(bundledCaptureHost)) {
-      await fs.promises.copyFile(
-        bundledCaptureHost,
-        path.join(root, 'libobs', 'bin', '64bit', 'clips-capture-host.exe')
-      );
-    }
-    await fs.promises.mkdir(path.join(root, 'ffmpeg'), { recursive: true });
-    await fs.promises.copyFile(
-      path.join(ffmpegSource, 'ffmpeg.exe'),
-      path.join(root, 'ffmpeg', 'ffmpeg.exe')
-    );
-    await fs.promises.mkdir(path.join(root, 'libmpv'), { recursive: true });
-    await Promise.all([
-      fs.promises.copyFile(
-        path.join(libmpvSource, 'mpv-host.exe'),
-        path.join(root, 'libmpv', 'mpv-host.exe')
-      ),
-      fs.promises.copyFile(
-        path.join(libmpvSource, 'libmpv-2.dll'),
-        path.join(root, 'libmpv', 'libmpv-2.dll')
-      )
-    ]);
-    for (const relative of REQUIRED_FILES) {
-      const installedFile = path.join(root, relative);
-      if (!fs.existsSync(installedFile) || fs.statSync(installedFile).size <= 0) {
-        throw new Error(`Installed media runtime is incomplete: ${relative}`);
+    await fs.promises.mkdir(path.dirname(root), { recursive: true });
+    const stagedRoot = path.join(path.dirname(root), `.v${RUNTIME_VERSION}.install-${process.pid}-${crypto.randomUUID()}`);
+    try {
+      await copyPrivateLibobs(obsSource, path.join(stagedRoot, 'libobs'));
+      const bundledCaptureHost = path.join(resourcesPath, 'capture-host', 'clips-capture-host.exe');
+      if (fs.existsSync(bundledCaptureHost)) {
+        await fs.promises.copyFile(
+          bundledCaptureHost,
+          path.join(stagedRoot, 'libobs', 'bin', '64bit', 'clips-capture-host.exe')
+        );
       }
+      await fs.promises.mkdir(path.join(stagedRoot, 'ffmpeg'), { recursive: true });
+      await fs.promises.copyFile(
+        path.join(ffmpegSource, 'ffmpeg.exe'),
+        path.join(stagedRoot, 'ffmpeg', 'ffmpeg.exe')
+      );
+      await fs.promises.mkdir(path.join(stagedRoot, 'libmpv'), { recursive: true });
+      await Promise.all([
+        fs.promises.copyFile(
+          path.join(libmpvSource, 'mpv-host.exe'),
+          path.join(stagedRoot, 'libmpv', 'mpv-host.exe')
+        ),
+        fs.promises.copyFile(
+          path.join(libmpvSource, 'libmpv-2.dll'),
+          path.join(stagedRoot, 'libmpv', 'libmpv-2.dll')
+        )
+      ]);
+      for (const relative of REQUIRED_FILES) {
+        const installedFile = path.join(stagedRoot, relative);
+        if (!fs.existsSync(installedFile) || fs.statSync(installedFile).size <= 0) {
+          throw new Error(`Installed media runtime is incomplete: ${relative}`);
+        }
+      }
+      await fs.promises.writeFile(manifestPath(stagedRoot), `${JSON.stringify({
+        version: RUNTIME_VERSION,
+        installedAt: new Date().toISOString(),
+        files: runtimeHashes(stagedRoot)
+      }, null, 2)}\n`);
+      await replacePathAtomically(stagedRoot, root);
+    } finally {
+      await fs.promises.rm(stagedRoot, { recursive: true, force: true });
     }
-    await fs.promises.writeFile(manifestPath(root), `${JSON.stringify({
-      version: RUNTIME_VERSION,
-      installedAt: new Date().toISOString()
-    }, null, 2)}\n`);
     installed = true;
   }
 
@@ -179,7 +243,7 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
   const installedCaptureHost = path.join(root, 'libobs', 'bin', '64bit', 'clips-capture-host.exe');
   if (fs.existsSync(bundledCaptureHost)) {
     await fs.promises.mkdir(path.dirname(installedCaptureHost), { recursive: true });
-    await copyFileWithRetries(bundledCaptureHost, installedCaptureHost);
+    await copyFileAtomically(bundledCaptureHost, installedCaptureHost);
     installed = true;
   }
 
@@ -189,7 +253,7 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
   if (fs.existsSync(bundledAmfProbe)) {
     const installedAmfProbe = path.join(root, 'libobs', 'bin', '64bit', 'obs-amf-test.exe');
     await fs.promises.mkdir(path.dirname(installedAmfProbe), { recursive: true });
-    await copyFileWithRetries(bundledAmfProbe, installedAmfProbe);
+    await copyFileAtomically(bundledAmfProbe, installedAmfProbe);
     installed = true;
   }
 
@@ -203,7 +267,7 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
     for (const name of ['obs-filters.dll', 'nv-filters.dll']) {
       const bundledPlugin = path.join(bundledMicrophoneFilters, name);
       if (fs.existsSync(bundledPlugin))
-        await copyFileWithRetries(bundledPlugin, path.join(installedPlugins, name));
+        await copyFileAtomically(bundledPlugin, path.join(installedPlugins, name));
     }
     const bundledFilterData = path.join(bundledMicrophoneFilters, 'data');
     if (fs.existsSync(bundledFilterData)) {
@@ -227,11 +291,21 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
   const bundledMpvHost = path.join(bundledLibmpv, 'mpv-host.exe');
   const bundledMpvLibrary = path.join(bundledLibmpv, 'libmpv-2.dll');
   if (fs.existsSync(bundledMpvHost) && fs.existsSync(bundledMpvLibrary)) {
-    await fs.promises.mkdir(installedLibmpv, { recursive: true });
-    await Promise.all([
-      fs.promises.copyFile(bundledMpvHost, path.join(installedLibmpv, 'mpv-host.exe')),
-      fs.promises.copyFile(bundledMpvLibrary, path.join(installedLibmpv, 'libmpv-2.dll'))
-    ]);
+    const stagedLibmpv = `${installedLibmpv}.install-${process.pid}-${crypto.randomUUID()}`;
+    try {
+      await fs.promises.mkdir(stagedLibmpv, { recursive: true });
+      await Promise.all([
+        fs.promises.copyFile(bundledMpvHost, path.join(stagedLibmpv, 'mpv-host.exe')),
+        fs.promises.copyFile(bundledMpvLibrary, path.join(stagedLibmpv, 'libmpv-2.dll'))
+      ]);
+      if ((await fs.promises.stat(path.join(stagedLibmpv, 'mpv-host.exe'))).size <= 0
+        || (await fs.promises.stat(path.join(stagedLibmpv, 'libmpv-2.dll'))).size <= 0) {
+        throw new Error('The bundled libmpv runtime is incomplete.');
+      }
+      await replacePathAtomically(stagedLibmpv, installedLibmpv);
+    } finally {
+      await fs.promises.rm(stagedLibmpv, { recursive: true, force: true });
+    }
     installed = true;
   }
 
@@ -245,6 +319,13 @@ async function ensureRuntimeInstalled(resourcesPath, root) {
     await fs.promises.mkdir(path.dirname(installedMpv), { recursive: true });
     await fs.promises.copyFile(mpvSource, installedMpv);
     installed = true;
+  }
+  if (installed && hasRequiredFiles(root)) {
+    await fs.promises.writeFile(manifestPath(root), `${JSON.stringify({
+      version: RUNTIME_VERSION,
+      installedAt: new Date().toISOString(),
+      files: runtimeHashes(root)
+    }, null, 2)}\n`);
   }
   return { installed, root };
 }

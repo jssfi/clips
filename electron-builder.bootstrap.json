@@ -3,6 +3,8 @@
   "productName": "jss clips",
   "files": [
     "src/**/*",
+    "clips-worker/src/web.js",
+    "clips-worker/src/web.css",
     "scripts/update-signature.js",
     "assets/**/*",
     "package.json"
