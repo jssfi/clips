@@ -249,11 +249,22 @@ test('stale preparation cleanup cannot delete the update currently being prepare
   const stale = '0.5.0-nightly.5.cafebabe.preparing-stale';
   fs.mkdirSync(path.join(versions, current));
   fs.mkdirSync(path.join(versions, stale));
+  const staleTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  fs.utimesSync(path.join(versions, stale), staleTime, staleTime);
 
   await cleanupStalePreparations(versions, { protectedDirectories: [current] });
 
   assert.equal(fs.existsSync(path.join(versions, current)), true);
   assert.equal(fs.existsSync(path.join(versions, stale)), false);
+});
+
+test('cleanup preserves a fresh preparation owned by another updater process', async t => {
+  const versions = fs.mkdtempSync(path.join(os.tmpdir(), 'clips-fresh-preparation-'));
+  t.after(() => fs.rmSync(versions, { recursive: true, force: true }));
+  const fresh = '0.5.0-nightly.12.deadbeef.preparing-other-process';
+  fs.mkdirSync(path.join(versions, fresh));
+  await cleanupStalePreparations(versions);
+  assert.equal(fs.existsSync(path.join(versions, fresh)), true);
 });
 
 test('prepared update finalization retries transient Windows directory locks', async () => {

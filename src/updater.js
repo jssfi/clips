@@ -16,6 +16,7 @@ const DOWNLOAD_STREAMS = 8;
 const MINIMUM_DOWNLOAD_PART_SIZE = 8 * 1024 * 1024;
 const METADATA_TIMEOUT_MS = 30 * 1000;
 const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const STALE_PREPARATION_AGE_MS = 60 * 60 * 1000;
 
 function updateRoot(app) {
   return path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'jss-clips');
@@ -257,14 +258,15 @@ async function cleanupStalePreparations(versions, { protectedDirectories = [] } 
     return;
   }
   const protectedNames = new Set(protectedDirectories.filter(Boolean));
-  const stale = entries.filter(entry => (
-    entry.isDirectory()
-    && isPreparationDirectory(entry.name)
-    && !protectedNames.has(entry.name)
-  ));
-  await Promise.allSettled(stale.map(entry => (
-    removeWithRetries(path.join(versions, entry.name), { recursive: true })
-  )));
+  const stale = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !isPreparationDirectory(entry.name) || protectedNames.has(entry.name)) continue;
+    try {
+      const stat = await fs.promises.stat(path.join(versions, entry.name));
+      if (Date.now() - stat.mtimeMs >= STALE_PREPARATION_AGE_MS) stale.push(entry.name);
+    } catch {}
+  }
+  await Promise.allSettled(stale.map(name => removeWithRetries(path.join(versions, name), { recursive: true })));
 }
 
 async function renameWithRetries(source, destination, {
@@ -457,7 +459,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
 
   const emit = next => onState(next);
   const sevenZip = () => path.join(process.resourcesPath, 'tools', '7za.exe');
-  cleanupOldVersions(app).catch(() => {});
+  const startupCleanup = cleanupOldVersions(app).catch(() => {});
 
   async function download(metadata) {
     const root = updateRoot(app);
@@ -518,6 +520,7 @@ function createStagedUpdater({ app, feedUrl, onState }) {
   }
 
   async function performCheck() {
+    await startupCleanup;
     emit({ status: 'checking', message: '', percent: 0 });
     const metadata = await withFetchTimeout(fetch, `${feedUrl}/latest.json`, { cache: 'no-store' }, async response => {
       if (!response.ok) throw new Error(`Update check failed (${response.status}).`);
