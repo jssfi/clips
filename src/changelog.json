@@ -1,8 +1,10 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.12",
     "title": "Microphone selection restored",
-    "changes": ["Settings now restore the saved microphone before device discovery, preventing unrelated autosaves from silently switching microphone recording off."]
+    "changes": [
+      "Settings now restore the saved microphone before device discovery, preventing unrelated autosaves from silently switching microphone recording off."
+    ]
   },
   {
     "version": "0.5-nightly.11",
