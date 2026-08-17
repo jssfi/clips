@@ -43,10 +43,10 @@ test('browser fullscreen keeps the current clip and exposes native controls', ()
 });
 
 test('browser media disconnects handle normal broken pipes', () => {
-  const main = source('src/main.js');
-  assert.match(main, /pipeline\(ffmpeg\.stdout, response/);
-  assert.match(main, /'EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'/);
-  assert.match(main, /request\.on\('aborted', stopStream\)/);
+  const mediaServer = source('src/media-server.js');
+  assert.match(mediaServer, /pipeline\(ffmpeg\.stdout, response/);
+  assert.match(mediaServer, /'EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'/);
+  assert.match(mediaServer, /request\.on\('aborted', stopStream\)/);
 });
 
 test('live settings synchronization does not rediscover microphones on every render', () => {

@@ -1,5 +1,13 @@
 [
   {
+    "version": "next",
+    "title": "Cleaner internals and reproducible checks",
+    "changes": [
+      "Media serving and tray management now live in focused modules, reducing Electron lifecycle coupling without changing app behavior.",
+      "The standard check now validates Worker configuration, generated types, and browser assets entirely in a temporary directory using checked-in example configuration."
+    ]
+  },
+  {
     "version": "0.5-nightly.9",
     "title": "Updates that survive persistent Windows locks",
     "changes": [

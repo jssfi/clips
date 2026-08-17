@@ -9,7 +9,7 @@ if (!workerPaths.has(workerName)) throw new Error('Choose clips-worker or a work
 
 const workerRoot = path.join(projectRoot, workerName);
 const templatePath = path.join(workerRoot, 'wrangler.template.jsonc');
-const targetPath = path.join(workerRoot, 'wrangler.jsonc');
+const targetPath = process.argv[3] ? path.resolve(process.argv[3]) : path.join(workerRoot, 'wrangler.jsonc');
 const env = process.env.CLIPS_HERMETIC_CHECK === '1'
   ? { ...parseEnv(fs.readFileSync(path.join(projectRoot, '.env.example'), 'utf8')), ...process.env }
   : loadProjectEnv(projectRoot);
@@ -19,4 +19,4 @@ required(env, [...new Set(variables)]);
 const rendered = template.replace(/{{([A-Z0-9_]+)}}/g, (_match, name) => JSON.stringify(String(env[name])).slice(1, -1));
 JSON.parse(rendered);
 fs.writeFileSync(targetPath, rendered);
-console.log(`Generated ${path.relative(projectRoot, targetPath)} from .env`);
+console.log(`Generated ${path.relative(projectRoot, targetPath)} from ${process.env.CLIPS_HERMETIC_CHECK === '1' ? '.env.example' : '.env'}`);

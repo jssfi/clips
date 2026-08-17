@@ -1,18 +1,16 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut, Tray, Menu, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut, nativeImage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const http = require('http');
 const net = require('net');
 const crypto = require('crypto');
 const { execFile, execFileSync, spawn } = require('child_process');
-const { pipeline } = require('stream');
 const { promisify } = require('util');
 const { ObsController } = require('./obs');
 const buildInfo = require('./build-info.json');
 const { RUNTIME_VERSION, runtimeRoot, isRuntimeReady, ensureRuntimeInstalled } = require('./runtime');
 const { redirectToActiveVersion, createStagedUpdater } = require('./updater');
-const { trayIconPng } = require('./tray-icon');
+const { createTrayController } = require('./tray-controller');
 const { MPV_QUIT_ON_FULLSCREEN_EXIT_SCRIPT, mpvFullscreenArgs } = require('./mpv-fullscreen');
 const { createLogger } = require('./logger');
 const { normalizeSettingsUpdate, captureRestartRequired } = require('./settings');
@@ -23,6 +21,7 @@ const { displayVersion } = require('./version');
 const { LibraryMetadata, storageInsights, concatManifest } = require('./library');
 const { createRecordingLibrary } = require('./recording-library');
 const { createGateway, DEFAULT_GATEWAY_PORT } = require('./gateway');
+const { createRecordingMediaServer } = require('./media-server');
 const changelog = require('./changelog.json');
 
 const legacyUserDataPath = path.join(app.getPath('appData'), 'Clippy');
@@ -58,11 +57,10 @@ const DEFAULTS = {
   nightlyUpdates: false, telemetryMode: 'pending'
 };
 
-let win, toastWin, tray, settings, monitorTimer, stopTimer, toastHideTimer, toastRecoveryTimer, microphoneVolumePersistTimer, connectPromise, mediaServer, mediaPort = 0, autoRecordSuppressed = false, lastError = '', activeGames = [], runningApps = [], lastClip = '', sessionDate = '', toastReady = false, pendingToast = null;
+let win, toastWin, settings, monitorTimer, stopTimer, toastHideTimer, toastRecoveryTimer, microphoneVolumePersistTimer, connectPromise, autoRecordSuppressed = false, lastError = '', activeGames = [], runningApps = [], lastClip = '', sessionDate = '', toastReady = false, pendingToast = null;
 let mpvProcess = null, mpvSocket = null, mpvBuffer = '', mpvRequestId = 0;
 let mpvFrameBuffer = Buffer.alloc(0);
 const mpvRequests = new Map();
-const mediaTokens = new Map();
 const thumbnailPromises = new Map();
 let thumbnailQueue = Promise.resolve();
 let updateState = { status: 'idle', version: app.getVersion(), percent: 0, message: '', configured: false };
@@ -72,6 +70,7 @@ let updateConfigurationGeneration = 0;
 let stagedUpdater = null;
 let runtimeSetupPromise = Promise.resolve();
 const logger = createLogger({ directory: path.join(app.getPath('userData'), 'logs') });
+const trayController = createTrayController({ getWindow: () => win });
 const telemetryEndpoint = configuredEndpoint();
 let telemetry = null;
 let systemInformation = null;
@@ -111,7 +110,7 @@ const recordingLibrary = createRecordingLibrary({
   onDelete: async filePath => {
     libraryMetadata?.remove(filePath);
     thumbnailPromises.delete(filePath);
-    for (const [token, entry] of mediaTokens) if (entry.filePath === filePath) mediaTokens.delete(token);
+    recordingMediaServer.invalidate(filePath);
     try {
       const stat = await fs.promises.stat(filePath);
       const key = crypto.createHash('sha256').update(`${filePath}:${stat.size}:${stat.mtimeMs}`).digest('hex').slice(0, 24);
@@ -124,6 +123,13 @@ const cleanupStorage = () => recordingLibrary.cleanupStorage(ensureDirectory);
 const recentRecordings = () => recordingLibrary.recentRecordings();
 const archivedRecordings = () => recordingLibrary.archivedRecordings();
 const validateRecordingPath = filePath => recordingLibrary.validatePath(filePath);
+const recordingMediaServer = createRecordingMediaServer({
+  validatePath: validateRecordingPath,
+  ffmpegPath,
+  execFile: execFileAsync,
+  spawn,
+  logger
+});
 function captureRuntimeRoot() {
   return app.isPackaged ? persistentRuntimeRoot : path.join(__dirname, '..', 'vendor');
 }
@@ -277,100 +283,6 @@ async function finalizeSessionMetadata() {
   }
   sessionMarkers = []; sessionStartedAt = 0; sessionGame = '';
 }
-function mediaContentType(filePath) {
-  const extension = path.extname(filePath).toLowerCase();
-  return ({ '.mkv': 'video/x-matroska', '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.flv': 'video/x-flv' })[extension] || 'application/octet-stream';
-}
-function startMediaServer() {
-  if (mediaServer) return Promise.resolve();
-  mediaServer = http.createServer((request, response) => {
-    try {
-      const token = new URL(request.url, 'http://127.0.0.1').pathname.split('/').pop();
-      const entry = mediaTokens.get(token);
-      if (!entry) { response.writeHead(404); response.end(); return; }
-      if (entry.stream) {
-        response.writeHead(200, {
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store',
-          'Content-Type': 'video/mp4',
-          'Cross-Origin-Resource-Policy': 'cross-origin'
-        });
-        if (request.method === 'HEAD') { response.end(); return; }
-        const ffmpeg = spawn(ffmpegPath(), [
-          '-hide_banner', '-loglevel', 'error', '-readrate', '1.25',
-          ...(entry.startSeconds > 0 ? ['-ss', String(entry.startSeconds)] : []),
-          '-i', entry.filePath,
-          '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy',
-          '-avoid_negative_ts', 'make_zero',
-          '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-          '-f', 'mp4', 'pipe:1'
-        ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-        let stderr = '';
-        let disconnected = false;
-        const stopStream = () => {
-          if (disconnected) return;
-          disconnected = true;
-          mediaTokens.delete(token);
-          if (!ffmpeg.killed) ffmpeg.kill();
-        };
-        ffmpeg.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-4000); });
-        ffmpeg.on('error', error => logger.warn('browser media stream failed to start', { message: error.message }));
-        ffmpeg.on('close', code => {
-          mediaTokens.delete(token);
-          if (code && !disconnected && !response.destroyed) logger.warn('browser media stream ended early', { code, message: stderr.trim() });
-        });
-        request.on('aborted', stopStream);
-        response.on('close', stopStream);
-        pipeline(ffmpeg.stdout, response, error => {
-          stopStream();
-          if (error && !['EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code)) {
-            logger.warn('browser media response failed', { code: error.code, message: error.message });
-          }
-        });
-        return;
-      }
-      const target = entry.sourcePath ? entry.filePath : validateRecordingPath(entry.filePath);
-      const size = fs.statSync(target).size;
-      const range = request.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
-      let start = 0;
-      let end = size - 1;
-      if (range) {
-        if (range[1]) start = Number(range[1]);
-        if (range[2]) end = Math.min(Number(range[2]), end);
-        if (!range[1] && range[2]) start = Math.max(0, size - Number(range[2]));
-        if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end || start >= size) {
-          response.writeHead(416, { 'Content-Range': `bytes */${size}` }); response.end(); return;
-        }
-      }
-      const headers = {
-        'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-store',
-        'Content-Type': mediaContentType(target),
-        'Content-Length': String(end - start + 1)
-      };
-      if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
-      response.writeHead(range ? 206 : 200, headers);
-      if (request.method === 'HEAD') { response.end(); return; }
-      const stream = fs.createReadStream(target, { start, end });
-      pipeline(stream, response, error => {
-        if (error && !['EPIPE', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code)) {
-          logger.warn('media response failed', { code: error.code, message: error.message });
-        }
-      });
-    } catch {
-      response.writeHead(404); response.end();
-    }
-  });
-  return new Promise((resolve, reject) => {
-    mediaServer.once('error', reject);
-    mediaServer.listen(0, '127.0.0.1', () => {
-      mediaServer.removeListener('error', reject);
-      mediaPort = mediaServer.address().port;
-      resolve();
-    });
-  });
-}
 async function previewPath(filePath) {
   const sourcePath = validateRecordingPath(filePath);
   if (path.extname(sourcePath).toLowerCase() === '.mp4') return sourcePath;
@@ -449,28 +361,7 @@ async function recordingThumbnail(filePath) {
   }
 }
 async function recordingMediaUrl(filePath, requestedStartSeconds = 0) {
-  const target = validateRecordingPath(filePath);
-  const startSeconds = Math.max(0, Number(requestedStartSeconds) || 0);
-  const executable = ffmpegPath();
-  if (!fs.existsSync(executable)) throw new Error('FFmpeg is missing from this Clips build.');
-  let duration = 0;
-  let probeStderr = '';
-  try {
-    ({ stderr: probeStderr = '' } = await execFileAsync(executable, ['-hide_banner', '-i', target, '-t', '0', '-f', 'null', '-'], {
-      windowsHide: true,
-      maxBuffer: 2 * 1024 * 1024
-    }));
-  } catch (error) {
-    probeStderr = String(error.stderr || '');
-  }
-  const match = probeStderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-  if (match) duration = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
-  if (!duration) throw new Error('Could not read the recording duration.');
-  const cutoff = Date.now() - 60 * 60 * 1000;
-  for (const [token, entry] of mediaTokens) if (entry.createdAt < cutoff) mediaTokens.delete(token);
-  const token = crypto.randomUUID();
-  mediaTokens.set(token, { filePath: target, startSeconds, stream: true, createdAt: Date.now() });
-  return { url: `http://127.0.0.1:${mediaPort}/media/${token}`, duration, startSeconds };
+  return recordingMediaServer.createStreamUrl(filePath, requestedStartSeconds);
 }
 function closeMpvSession() {
   const child = mpvProcess;
@@ -1033,21 +924,8 @@ function configureTelemetry({ sendStartup = false } = {}) {
   });
   if (sendStartup) telemetry.sendStartup().catch(() => {});
 }
-function trayIcon(recording) {
-  return nativeImage.createFromBuffer(trayIconPng(recording));
-}
-function updateTray(recording) {
-  if (tray && !tray.isDestroyed()) {
-    tray.setImage(trayIcon(recording));
-    tray.setToolTip(recording ? 'jss/clips — Recording' : 'jss/clips');
-  }
-  if (win && !win.isDestroyed()) win.setIcon(nativeImage.createFromBuffer(trayIconPng(recording, 256)));
-}
 function showMainWindow() {
-  if (!win || win.isDestroyed()) return;
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
+  trayController.showWindow();
 }
 function webAppLaunchUrl() {
   const url = new URL(`http://127.0.0.1:${DEFAULT_GATEWAY_PORT}/app/`);
@@ -1171,7 +1049,7 @@ function openPreferredUi() {
 }
 async function broadcast() {
   const currentState = await state();
-  updateTray(currentState.obs.recording);
+  trayController.update(currentState.obs.recording);
   if (win && !win.isDestroyed()) win.webContents.send('state', currentState);
   gateway?.emit('state', currentState);
 }
@@ -1611,7 +1489,7 @@ async function deleteRecordings(filePaths) {
     fs.rmSync(target, { force: true });
     recordingLibrary.setFavorite(target, false, { persist: false });
     thumbnailPromises.delete(target);
-    for (const [token, entry] of mediaTokens) if (entry.filePath === target) mediaTokens.delete(token);
+    recordingMediaServer.invalidate(target);
   }
   recordingLibrary.persistFavorites();
   await broadcast();
@@ -1746,7 +1624,7 @@ app.whenReady().then(async () => {
     }
   });
   try {
-    await Promise.all([startMediaServer(), gateway.start()]);
+    await Promise.all([recordingMediaServer.start(), gateway.start()]);
     gatewayReady = true;
     logger.info('web gateway ready', { port: DEFAULT_GATEWAY_PORT, origin: new URL(WEB_APP_URL).origin });
   } catch (error) {
@@ -1760,18 +1638,18 @@ app.whenReady().then(async () => {
       .catch(error => setError(new Error(`Media runtime setup failed: ${error.message}`)));
   }
   scheduleMonitor();
-  tray = new Tray(trayIcon(false)); tray.setToolTip('jss/clips'); tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Open jss/clips', click: openPreferredUi }, { label: 'Open desktop window', click: showMainWindow }, { label: 'Save clip', click: saveClip }, { type: 'separator' },
-    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } }
-  ]));
-  tray.on('double-click', openPreferredUi);
+  trayController.create({
+    openPreferredUi,
+    saveClip,
+    quit: () => { app.isQuitting = true; app.quit(); }
+  });
   broadcast();
   if (!process.argv.includes('--hidden') && settings.desktopWindow === false) openWebUi();
 });
 app.on('second-instance', openPreferredUi);
 process.on('uncaughtExceptionMonitor', error => { logger.error('uncaught exception', { message: error.message, stack: error.stack }); telemetry?.reportError(error).catch(() => {}); });
 process.on('unhandledRejection', error => { logger.error('unhandled rejection', { message: error?.message || String(error), stack: error?.stack }); telemetry?.reportError(error).catch(() => {}); });
-app.on('will-quit', () => { logger.info('application quitting'); if (microphoneVolumePersistTimer) persist(); logger.maintain(); clearTimeout(toastHideTimer); clearTimeout(toastRecoveryTimer); clearTimeout(microphoneVolumePersistTimer); clearTimeout(monitorTimer); clearTimeout(updateCheckTimeout); clearInterval(updateCheckTimer); obs.disconnect().catch(() => {}); closeMpvSession(); mediaServer?.close(); gateway?.close(); globalShortcut.unregisterAll(); });
+app.on('will-quit', () => { logger.info('application quitting'); if (microphoneVolumePersistTimer) persist(); logger.maintain(); clearTimeout(toastHideTimer); clearTimeout(toastRecoveryTimer); clearTimeout(microphoneVolumePersistTimer); clearTimeout(monitorTimer); clearTimeout(updateCheckTimeout); clearInterval(updateCheckTimer); obs.disconnect().catch(() => {}); closeMpvSession(); recordingMediaServer.close(); gateway?.close(); globalShortcut.unregisterAll(); });
 
 ipcMain.handle('state:get', state);
 ipcMain.handle('update:install', installUpdate);

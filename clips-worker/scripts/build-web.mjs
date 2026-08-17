@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const workerRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const projectRoot = join(workerRoot, '..');
-const outputRoot = join(workerRoot, 'public', 'app');
+const outputRoot = process.env.CLIPS_WEB_OUTPUT_ROOT || join(workerRoot, 'public', 'app');
 
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(outputRoot, { recursive: true });
@@ -23,4 +23,4 @@ await Promise.all([
   copyFile(join(workerRoot, 'src', 'web.css'), join(outputRoot, 'web.css'))
 ]);
 
-console.log('Built browser demo in clips-worker/public/app');
+console.log(`Built browser demo in ${outputRoot}`);
