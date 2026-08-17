@@ -1,8 +1,10 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.11",
     "title": "Verified application packages during updates",
-    "changes": ["Clips now cryptographically verifies app.asar after extraction, after Windows copy fallback, and before reusing a prepared update."]
+    "changes": [
+      "Clips now cryptographically verifies app.asar after extraction, after Windows copy fallback, and before reusing a prepared update."
+    ]
   },
   {
     "version": "0.5-nightly.10",
