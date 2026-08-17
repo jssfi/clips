@@ -1,14 +1,25 @@
 [
   {
     "version": "0.5",
-    "title": "Reliable updates and safer recording",
+    "title": "Safer updates and smoother recording",
     "changes": [
-      "Updates now verify application and runtime files, survive common Windows locking failures, preserve working rollback versions, and recover automatically when a new build cannot complete its first healthy startup.",
-      "Fullscreen game detection is more selective, preventing ordinary maximized apps, editors, browsers, and overlays from being mistaken for games.",
-      "Recording libraries handle large collections with less repeated disk work, reject paths that escape the library, and clean up related favorites, metadata, thumbnails, and playback access consistently.",
-      "Settings safely recover from malformed files, restore saved microphone choices reliably, and serialize overlapping monitoring work.",
-      "Capture and native playback reject malformed or unsafe input, recover cleanly from partial initialization, and use a versioned media runtime with integrity checks.",
-      "Release builds now test representative upgrades from earlier stable and nightly clients and verify signed public artifacts before publication."
+      "Updates are now fully verified before Clips launches them.",
+      "Interrupted updates preserve the last working version instead of leaving Clips unusable.",
+      "Clips automatically rolls back if an updated version cannot start successfully.",
+      "Installation is more reliable when Windows temporarily locks application files.",
+      "Upgrades are tested from earlier stable and nightly versions before release.",
+      "New-game detection now checks whether a window actually covers its monitor.",
+      "Browsers, editors, overlays, and ordinary maximized apps are much less likely to be mistaken for games.",
+      "Large libraries load and clean up with substantially less disk activity.",
+      "Removing a recording now consistently cleans up its favorites, metadata, and thumbnails.",
+      "Recording operations are better protected against invalid or unsafe file locations.",
+      "Capture recovers more cleanly when the recording engine fails during startup.",
+      "Playback rejects damaged or invalid video data more safely.",
+      "Bundled recording and playback components are now versioned and verified for compatibility.",
+      "Fresh installations reliably include the complete browser interface and media runtime.",
+      "Clips can recover from malformed settings without silently discarding the original file.",
+      "Saved microphone selections are restored more reliably.",
+      "Background monitoring avoids duplicated work when several refreshes happen together."
     ]
   },
   {
