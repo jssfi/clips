@@ -31,6 +31,11 @@ function cacheControl(name: string): string {
     : "public, max-age=31536000, immutable";
 }
 
+function githubReleaseTag(version: string): string {
+  return version.replace(/-nightly\.(\d+)(?=\.|$)/, (_match, sequence: string) =>
+    `-nightly.n${sequence.padStart(6, "0")}`);
+}
+
 function githubReleaseUrl(name: string): string | null {
   if (!VERSIONED_ARTIFACT.test(name)) return null;
   const version = (
@@ -39,7 +44,7 @@ function githubReleaseUrl(name: string): string | null {
     || /^jss-clips-source-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.zip$/.exec(name)
   )?.[1];
   return version
-    ? `https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/${encodeURIComponent(name)}`
+    ? `https://github.com/${GITHUB_REPOSITORY}/releases/download/v${githubReleaseTag(version)}/${encodeURIComponent(name)}`
     : null;
 }
 

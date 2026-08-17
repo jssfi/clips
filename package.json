@@ -35,7 +35,8 @@
     "dist:bootstrap": "npm run build:info && npm run stage:legal && electron-builder --config electron-builder.bootstrap.json --win nsis",
     "dist:fresh": "npm run stage:runtime && npm run build:mpv-host && npm run build:capture-host && npm run dist:bootstrap",
     "dist:portable": "npm run build:info && electron-builder --config electron-builder.bootstrap.json --win portable",
-    "update:serve": "node scripts/local-update-server.js"
+    "update:serve": "node scripts/local-update-server.js",
+    "migrate:github-nightly-tags": "node scripts/migrate-github-nightly-tags.mjs"
   },
   "devDependencies": {
     "7zip-bin": "^5.2.0",

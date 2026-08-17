@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { artifactName, parseRange, serve } from '../src/updates.ts';
+import { artifactName, githubReleaseUrl, parseRange, serve } from '../src/updates.ts';
 import { serveTelemetry } from '../src/telemetry.ts';
 
 function r2Object(body, overrides = {}) {
@@ -21,6 +21,29 @@ test('update routes reject traversal and parse complete byte ranges', () => {
   assert.deepEqual(parseRange('bytes=-12', 100), { suffix: 12 });
   assert.equal(parseRange('bytes=100-101', 100), null);
   assert.equal(parseRange('bytes=20-10', 100), null);
+});
+
+test('GitHub fallback maps legacy nightly tags without changing artifact names', async () => {
+  const legacyName = 'jss-clips-app-0.5.0-nightly.19.77e9a876-x64.zip';
+  assert.equal(githubReleaseUrl(legacyName),
+    `https://github.com/jssfi/clips/releases/download/v0.5.0-nightly.n000019.77e9a876/${legacyName}`);
+
+  const fixedName = 'jss-clips-setup-0.5.0-nightly.n000019.77e9a876-x64.exe';
+  assert.equal(githubReleaseUrl(fixedName),
+    `https://github.com/jssfi/clips/releases/download/v0.5.0-nightly.n000019.77e9a876/${fixedName}`);
+
+  const stableName = 'jss-clips-portable-0.5.0-x64.exe';
+  assert.equal(githubReleaseUrl(stableName),
+    `https://github.com/jssfi/clips/releases/download/v0.5.0/${stableName}`);
+
+  let lookedUpKey;
+  const response = await serve(new Request(`https://cdn.clips.jss.fi/${legacyName}`), {
+    async get(key) { lookedUpKey = key; return null; }
+  });
+  assert.equal(lookedUpKey, `releases/${legacyName}`);
+  assert.equal(response.status, 307);
+  assert.equal(response.headers.get('location'),
+    `https://github.com/jssfi/clips/releases/download/v0.5.0-nightly.n000019.77e9a876/${legacyName}`);
 });
 
 test('update serving returns correct range and conditional statuses', async () => {

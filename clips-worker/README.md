@@ -20,4 +20,6 @@ Publish locally built update artifacts from the repository root with `powershell
 
 Artifact publishing deliberately does not use Wrangler login credentials. Create an R2 API token scoped to Object Read & Write for only the update bucket, then expose its S3-compatible credentials to the publishing process as `CLIPS_R2_ACCOUNT_ID`, `CLIPS_R2_ACCESS_KEY_ID`, and `CLIPS_R2_SECRET_ACCESS_KEY`. Keep the token separate from the token or OAuth session used to deploy the Worker. The publisher refuses to fall back to broader Wrangler credentials.
 
+Historical numeric nightly tags are retained as Git references, while their GitHub Releases use fixed-width `nightly.nNNNNNN` aliases so GitHub's paginated release list remains numerically ordered. The Worker maps the unchanged public artifact filenames to those archive tags. Use `npm run migrate:github-nightly-tags` from the repository root for a read-only migration plan; applying it requires the explicit confirmation flag printed by the command.
+
 The Worker name, domain, and R2 bindings are generated into the ignored `wrangler.jsonc` from the repository-root `.env`; see `.env.example`.

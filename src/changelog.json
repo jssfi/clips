@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Release archive cleanup",
+    "changes": [
+      "GitHub's full release history now keeps nightly builds in numeric order across every page while existing Clips download addresses continue to work."
+    ]
+  },
+  {
     "version": "0.5-nightly.19",
     "title": "Release history ordering",
     "changes": [
