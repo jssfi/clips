@@ -17,8 +17,8 @@ const artifacts = [
 ];
 if (!version.includes('-')) artifacts.push(`jss-clips-setup-${version}-x64.exe`);
 function displayVersion(value) {
-  const developmentNightly = /^(\d+\.\d+)\.0-nightly\.(\d+)\.[0-9a-f]+$/i.exec(value);
-  if (developmentNightly) return `${developmentNightly[1]}-nightly.${developmentNightly[2]}`;
+  const developmentNightly = /^(\d+\.\d+)\.0-nightly\.(?:n0*(\d+)|(\d+))\.[0-9a-f]+$/i.exec(value);
+  if (developmentNightly) return `${developmentNightly[1]}-nightly.${developmentNightly[2] || developmentNightly[3]}`;
   const nightly = /^(\d+\.\d+)\.\d+-nightly\.\d+\.([0-9a-f]+)$/i.exec(value);
   if (nightly) return `${nightly[1]}-${nightly[2]}`;
   const stable = /^(\d+\.\d+)\.0$/.exec(value);

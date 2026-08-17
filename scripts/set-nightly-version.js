@@ -26,7 +26,11 @@ const previousSequences = changelog
   .filter(Boolean)
   .map(match => Number(match[1]));
 const nightlySequence = Math.max(0, ...previousSequences) + 1;
-const internalVersion = `${base}.0-nightly.${nightlySequence}.${hash}`;
+// GitHub orders prerelease tags lexically rather than comparing numeric SemVer
+// identifiers. Keep the sequence in a fixed-width alphanumeric identifier so
+// nightly 19 remains above nightly 9 without using invalid leading-zero numbers.
+const sortableSequence = `n${String(nightlySequence).padStart(6, '0')}`;
+const internalVersion = `${base}.0-nightly.${sortableSequence}.${hash}`;
 const displayVersion = `${base}-nightly.${nightlySequence}`;
 
 packageJson.version = internalVersion;

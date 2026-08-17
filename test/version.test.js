@@ -12,4 +12,5 @@ test('nightly releases display their source commit hash', () => {
 
 test('next-minor nightlies display their development sequence', () => {
   assert.equal(displayVersion('0.5.0-nightly.1.a1b2c3d4'), '0.5-nightly.1');
+  assert.equal(displayVersion('0.5.0-nightly.n000019.a1b2c3d4'), '0.5-nightly.19');
 });

@@ -219,6 +219,11 @@ test('compareVersions orders patch releases', () => {
   assert.equal(compareVersions('1.2.3', '1.2.3'), 0);
 });
 
+test('compareVersions orders sortable nightlies after legacy sequences', () => {
+  assert.equal(compareVersions('0.5.0-nightly.n000019.aaaaaaaa', '0.5.0-nightly.18.bbbbbbbb'), 1);
+  assert.equal(compareVersions('0.5.0-nightly.n000020.aaaaaaaa', '0.5.0-nightly.n000019.bbbbbbbb'), 1);
+});
+
 test('compareVersions orders commit nightlies after their stable base', () => {
   assert.equal(compareVersions('0.3.1-nightly.42.bbbbbbbb', '0.3.0'), 1);
   assert.equal(compareVersions('0.3.1-nightly.43.aaaaaaaa', '0.3.1-nightly.42.bbbbbbbb'), 1);

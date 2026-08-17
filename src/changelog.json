@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Release history ordering",
+    "changes": [
+      "Nightly release tags now remain in the correct newest-first order on GitHub once their sequence reaches two digits."
+    ]
+  },
+  {
     "version": "0.5-nightly.18",
     "title": "Recovery and release safeguards",
     "changes": [
