@@ -102,6 +102,31 @@ function isRuntimeReady(root) {
   }
 }
 
+function isRuntimeRepairableFromBundledComponents(resourcesPath, root) {
+  const replacements = new Map([
+    [path.join('libobs', 'bin', '64bit', 'clips-capture-host.exe'), path.join('capture-host', 'clips-capture-host.exe')],
+    [path.join('libmpv', 'mpv-host.exe'), path.join('libmpv', 'mpv-host.exe')],
+    [path.join('libmpv', 'libmpv-2.dll'), path.join('libmpv', 'libmpv-2.dll')]
+  ]);
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath(root), 'utf8'));
+    if (manifest.version !== RUNTIME_VERSION) return false;
+    return REQUIRED_FILES.every(relative => {
+      const installed = path.join(root, relative);
+      if (fs.statSync(installed).size <= 0) return false;
+      const expectedHash = manifest.files?.[relative.replaceAll('\\', '/')];
+      const installedHash = fileSha256(installed);
+      if (!expectedHash || installedHash === expectedHash) return true;
+      const bundledRelative = replacements.get(relative);
+      if (!bundledRelative) return false;
+      const bundled = path.join(resourcesPath, bundledRelative);
+      return fs.statSync(bundled).size > 0 && fileSha256(bundled) === installedHash;
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function replacePathAtomically(staged, destination) {
   const backup = `${destination}.backup-${process.pid}-${crypto.randomUUID()}`;
   let movedExisting = false;
@@ -172,6 +197,14 @@ async function copyPrivateLibobs(source, destination) {
 
 async function ensureRuntimeInstalled(resourcesPath, root) {
   let installed = false;
+  if (!isRuntimeReady(root) && isRuntimeRepairableFromBundledComponents(resourcesPath, root)) {
+    await fs.promises.writeFile(manifestPath(root), `${JSON.stringify({
+      version: RUNTIME_VERSION,
+      installedAt: new Date().toISOString(),
+      files: runtimeHashes(root)
+    }, null, 2)}\n`);
+    installed = true;
+  }
   if (!isRuntimeReady(root)) {
     const previousRoot = path.join(path.dirname(root), 'v1');
     const componentSource = name => {
@@ -335,5 +368,6 @@ module.exports = {
   REQUIRED_FILES,
   runtimeRoot,
   isRuntimeReady,
+  isRuntimeRepairableFromBundledComponents,
   ensureRuntimeInstalled
 };

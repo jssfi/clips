@@ -7,6 +7,7 @@ const {
   RUNTIME_VERSION,
   REQUIRED_FILES,
   isRuntimeReady,
+  isRuntimeRepairableFromBundledComponents,
   ensureRuntimeInstalled
 } = require('../src/runtime');
 
@@ -116,4 +117,33 @@ test('runtime hashes detect corruption while legacy manifests remain compatible'
     files: { [relative.replaceAll('\\', '/')]: 'invalid-hash' }
   }));
   assert.equal(isRuntimeReady(temporary), false);
+});
+
+test('a slim update repairs a stale manifest only for its matching bundled component', async t => {
+  const temporary = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'clips-runtime-repair-test-'));
+  t.after(() => fs.promises.rm(temporary, { recursive: true, force: true }));
+  const resources = path.join(temporary, 'resources');
+  const runtime = path.join(temporary, `v${RUNTIME_VERSION}`);
+  for (const relative of REQUIRED_FILES) {
+    const target = path.join(runtime, relative);
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    await fs.promises.writeFile(target, `installed ${relative}`);
+  }
+  await fs.promises.mkdir(path.join(resources, 'capture-host'), { recursive: true });
+  const installedHost = path.join(runtime, 'libobs', 'bin', '64bit', 'clips-capture-host.exe');
+  await fs.promises.copyFile(installedHost, path.join(resources, 'capture-host', 'clips-capture-host.exe'));
+  await fs.promises.writeFile(path.join(runtime, 'runtime.json'), JSON.stringify({
+    version: RUNTIME_VERSION,
+    files: Object.fromEntries(REQUIRED_FILES.map(relative => [
+      relative.replaceAll('\\', '/'),
+      relative.endsWith('clips-capture-host.exe') ? 'previous-host-hash' : undefined
+    ]))
+  }));
+
+  assert.equal(isRuntimeRepairableFromBundledComponents(resources, runtime), true);
+  await ensureRuntimeInstalled(resources, runtime);
+  assert.equal(isRuntimeReady(runtime), true);
+
+  await fs.promises.writeFile(path.join(runtime, 'ffmpeg', 'ffmpeg.exe'), 'untrusted corruption');
+  assert.equal(isRuntimeRepairableFromBundledComponents(resources, runtime), false);
 });
