@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.5-nightly.8",
     "title": "Safer, smoother recording libraries",
     "changes": [
       "Recording file operations now reject junctions that escape the library, and deleted recordings immediately lose playback access.",
