@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Staged updater diagnostic test",
+    "changes": [
+      "This release exercises the instrumented staged updater from the previous nightly without changing recording behavior."
+    ]
+  },
+  {
     "version": "0.5-nightly.16",
     "title": "Forensic staged updater",
     "changes": [
