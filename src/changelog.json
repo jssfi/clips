@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.6-nightly.2",
     "title": "Release notes match your update channel",
     "changes": [
       "Stable update users now see only stable release notes, while nightly users see the full history with stable releases clearly marked as recaps."
