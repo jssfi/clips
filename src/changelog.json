@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.6-nightly.4",
     "title": "New games are detected again",
     "changes": [
       "Fullscreen games that are not already monitored or ignored now correctly trigger the new-game popup."
