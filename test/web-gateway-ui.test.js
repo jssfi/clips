@@ -56,6 +56,16 @@ test('live settings synchronization does not rediscover microphones on every ren
   assert.match(renderer, /JSON\.stringify\(s\.settings\) !== renderedSettingsJson/);
 });
 
+test('release history follows the nightly update preference', () => {
+  const renderer = source('src/renderer.js');
+  const css = source('src/styles.css');
+  assert.match(renderer, /renderChangelog\(s\.app\?\.changelog \|\| \[\], !!s\.settings\?\.nightlyUpdates\)/);
+  assert.match(renderer, /nightlyUpdates \? releases : releases\.filter\(release => !isNightlyRelease\(release\)\)/);
+  assert.match(renderer, /if \(nightlyUpdates && !isNightlyRelease\(release\)\)/);
+  assert.match(renderer, /recap\.textContent = "Recap"/);
+  assert.match(css, /\.changelog-heading \.changelog-tag/);
+});
+
 test('saved microphone selection is restored before asynchronous device discovery', () => {
   const renderer = source('src/renderer.js');
   assert.match(renderer, /restoreMicrophoneSelection\(s\.settings\.microphoneDeviceId\)/);

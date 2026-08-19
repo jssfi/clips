@@ -187,7 +187,7 @@ function render(s, fill = false) {
   $("telemetry-status").textContent = s.telemetry?.configured
     ? "The choice applies immediately and can be changed at any time."
     : "Telemetry is not configured in this build; no data can be sent.";
-  renderChangelog(s.app?.changelog || []);
+  renderChangelog(s.app?.changelog || [], !!s.settings?.nightlyUpdates);
   const online = s.obs.connected;
   $("connection").textContent = online ? "Capture engine ready" : "Capture engine offline";
   $("connection-dot").classList.toggle("online", online);
@@ -347,11 +347,14 @@ function render(s, fill = false) {
   }
 }
 
-function renderChangelog(releases) {
+const isNightlyRelease = release => /(?:^|-)nightly(?:\.|$)/i.test(String(release?.version || ""));
+function renderChangelog(releases, nightlyUpdates) {
   const container = $("changelog");
-  if (container.dataset.rendered === JSON.stringify(releases)) return;
-  container.dataset.rendered = JSON.stringify(releases);
-  container.replaceChildren(...releases.map(release => {
+  const visibleReleases = nightlyUpdates ? releases : releases.filter(release => !isNightlyRelease(release));
+  const renderKey = JSON.stringify({ releases: visibleReleases, nightlyUpdates });
+  if (container.dataset.rendered === renderKey) return;
+  container.dataset.rendered = renderKey;
+  container.replaceChildren(...visibleReleases.map(release => {
     const article = document.createElement("article");
     article.className = "changelog-release";
     const heading = document.createElement("div");
@@ -361,6 +364,12 @@ function renderChangelog(releases) {
     const title = document.createElement("span");
     title.textContent = release.title;
     heading.append(version, title);
+    if (nightlyUpdates && !isNightlyRelease(release)) {
+      const recap = document.createElement("span");
+      recap.className = "changelog-tag";
+      recap.textContent = "Recap";
+      heading.append(recap);
+    }
     const list = document.createElement("ul");
     for (const change of release.changes || []) {
       const item = document.createElement("li");
