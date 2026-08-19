@@ -28,6 +28,7 @@
     "build:source": "node scripts/build-source-bundle.js",
     "dist:release": "node scripts/build-release.mjs",
     "test:staged-update": "node scripts/test-staged-update.js",
+    "test:staged-update:electron": "set ELECTRON_RUN_AS_NODE=&& electron scripts/test-staged-update.js",
     "test:capture-host": "node scripts/test-capture-host.js",
     "test:capture-controller": "node scripts/test-capture-controller.js",
     "test:microphone-slider": "electron scripts/test-microphone-slider.js",

@@ -398,7 +398,7 @@ async function promotePreparedDirectory(source, destination, {
 } = {}) {
   try {
     await renameWithRetries(source, destination, { rename, wait, attempts: 4 });
-    return;
+    return 'rename';
   } catch (error) {
     if (!RETRYABLE_FILE_ERRORS.has(error?.code)) throw error;
   }
@@ -416,6 +416,7 @@ async function promotePreparedDirectory(source, destination, {
     throw new Error('The promoted application package failed its integrity check.');
   }
   await remove(source, { recursive: true }).catch(() => {});
+  return 'copy';
 }
 
 async function cleanupInvalidPreparedVersions(versions, { protectedDirectories = [] } = {}) {
@@ -556,7 +557,7 @@ function preparedUpdateMatches(prepared, metadata) {
     && prepared.size === metadata.size);
 }
 
-function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () => {} }) {
+function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () => {}, resourcesPath = process.resourcesPath }) {
   let operation = null;
   let readyUpdate = null;
   let readyMetadata = null;
@@ -567,7 +568,7 @@ function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () 
     logger?.[level]?.(`staged updater ${event}`, details);
   };
   const emit = next => { trace('info', 'state', next); onState(next); };
-  const sevenZip = () => path.join(process.resourcesPath, 'tools', '7za.exe');
+  const sevenZip = () => path.join(resourcesPath, 'tools', '7za.exe');
   const snapshot = async (label, directory) => {
     const inspect = async (api, file) => {
       try {
@@ -584,7 +585,6 @@ function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () 
       directory,
       executable: await inspect(rawFs, path.join(directory, APP_EXECUTABLE)),
       asarRaw: await inspect(rawFs, path.join(directory, 'resources', 'app.asar')),
-      asarElectron: await inspect(fs, path.join(directory, 'resources', 'app.asar')),
       resources
     });
   };
@@ -651,7 +651,9 @@ function createStagedUpdater({ app, feedUrl, onState, logger, onDiagnostic = () 
             preparedAt: new Date().toISOString()
           }, null, 2));
           trace('info', 'promotion begin', { attempt, destination, finalDestination });
-          await promotePreparedDirectory(destination, finalDestination, { expectedAsarSha512: metadata.asarSha512 });
+          const promotionStarted = Date.now();
+          const promotionMethod = await promotePreparedDirectory(destination, finalDestination, { expectedAsarSha512: metadata.asarSha512 });
+          trace('info', 'promotion complete', { attempt, method: promotionMethod, durationMs: Date.now() - promotionStarted });
           await snapshot(`after promotion attempt ${attempt}`, finalDestination);
           trace('info', 'preparation complete', { attempt, directoryName });
           return { version: metadata.version, directory: directoryName, executable: versionExecutable(app, metadata.version, directoryName) };

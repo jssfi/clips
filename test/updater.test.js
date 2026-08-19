@@ -450,16 +450,26 @@ test('prepared update finalization retries transient Windows directory locks', a
   assert.deepEqual(delays, [50, 100]);
 });
 
+test('prepared update promotion reports a direct directory rename', async () => {
+  const method = await promotePreparedDirectory('preparing', 'final', {
+    rename: async () => {},
+    copy: async () => { throw new Error('copy fallback should not run'); }
+  });
+
+  assert.equal(method, 'rename');
+});
+
 test('prepared update promotion copies and verifies when Windows keeps the directory locked', async () => {
   const copied = [];
   const removed = [];
-  await promotePreparedDirectory('preparing', 'final', {
+  const method = await promotePreparedDirectory('preparing', 'final', {
     rename: async () => { throw Object.assign(new Error('locked'), { code: 'EPERM' }); },
     wait: async () => {},
     copy: async (...args) => { copied.push(args); },
     stat: async file => ({ size: file.endsWith('app.asar') ? 200 : 100 }),
     remove: async name => { removed.push(name); }
   });
+  assert.equal(method, 'copy');
   assert.equal(copied.length, 1);
   assert.deepEqual(removed, ['final', 'preparing']);
 });

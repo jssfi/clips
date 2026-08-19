@@ -1,4 +1,5 @@
-const fs = require('fs');
+let fs = require('fs');
+if (process.versions.electron) fs = require('original-fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
@@ -33,7 +34,8 @@ async function main() {
 
   try {
     process.env.LOCALAPPDATA = temporaryRoot;
-    process.resourcesPath = path.join(projectRoot, 'dist', 'staged', 'win-unpacked', 'resources');
+    const packagedResourcesPath = path.join(projectRoot, 'dist', 'staged', 'win-unpacked', 'resources');
+    if (!process.versions.electron) process.resourcesPath = packagedResourcesPath;
     const versionRoot = path.join(temporaryRoot, 'jss-clips', 'app-versions');
     const activeDirectory = '0.1.10.app-running';
     const rollbackDirectory = '0.1.9.app-rollback';
@@ -59,6 +61,7 @@ async function main() {
     await fs.promises.utimes(path.join(versionRoot, stalePreparation), abandonedAt, abandonedAt);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const states = [];
+    const diagnostics = [];
     let relaunchOptions = null;
     let exitCode = null;
     const updater = createStagedUpdater({
@@ -69,9 +72,12 @@ async function main() {
         exit: code => { exitCode = code; }
       },
       feedUrl: `http://127.0.0.1:${server.address().port}`,
-      onState: state => states.push(state)
+      onState: state => states.push(state),
+      onDiagnostic: entry => diagnostics.push(entry),
+      resourcesPath: packagedResourcesPath
     });
-    assert.equal(await updater.check(), true);
+    const updateAvailable = await updater.check();
+    assert.equal(updateAvailable, true, JSON.stringify({ state: states.at(-1), diagnostic: diagnostics.at(-1) }));
     assert.equal(states.at(-1).status, 'ready');
     assert.ok(states.some(state => state.status === 'preparing'));
     const versionDirectories = fs.readdirSync(versionRoot)
@@ -82,6 +88,10 @@ async function main() {
     assert.equal(fs.existsSync(path.join(versionRoot, stalePreparation)), false);
     const preparedExecutable = path.join(versionRoot, versionDirectories[0], 'jss clips.exe');
     assert.ok(fs.existsSync(preparedExecutable));
+    const promotion = diagnostics.find(entry => entry.event === 'promotion complete');
+    assert.ok(promotion, 'The updater must report how the prepared application was promoted.');
+    assert.equal(promotion.details.method, 'rename', 'The prepared application must use a direct rename, not the full-copy fallback.');
+    console.log(`Prepared application promoted by ${promotion.details.method} in ${promotion.details.durationMs} ms.`);
     assert.equal(await updater.restart(), true);
     assert.equal(exitCode, 0);
     assert.equal(relaunchOptions.execPath, preparedExecutable);
@@ -102,7 +112,10 @@ async function main() {
   }
 }
 
-main().catch(error => {
+main().then(() => {
+  if (process.versions.electron) require('electron').app.exit(0);
+}).catch(error => {
   console.error(error);
-  process.exitCode = 1;
+  if (process.versions.electron) require('electron').app.exit(1);
+  else process.exitCode = 1;
 });
