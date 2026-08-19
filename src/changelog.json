@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Browser opening stays in your hands",
+    "changes": [
+      "Clips no longer takes control of Helium or uses its tab finder when opening the browser interface."
+    ]
+  },
+  {
     "version": "0.5",
     "title": "Safer updates and smoother recording",
     "changes": [

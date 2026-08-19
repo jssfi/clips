@@ -948,19 +948,14 @@ public static class ClipsBrowserFocus {
 }
 '@
 $browserNames = @('chrome', 'msedge', 'firefox', 'brave', 'vivaldi', 'opera')
-$chromiumNames = @('chrome', 'msedge', 'brave', 'vivaldi', 'opera')
 $refresh = ${refreshLiteral}
 $foreground = ${foregroundLiteral}
-$fallbackProcess = $null
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 $windows = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
 foreach ($window in $windows) {
   try {
     $process = Get-Process -Id $window.Current.ProcessId -ErrorAction Stop
     if ($browserNames -notcontains $process.ProcessName.ToLowerInvariant()) { continue }
-    if ($chromiumNames -contains $process.ProcessName.ToLowerInvariant()) {
-      if (-not $fallbackProcess -or $process.Path -match '(?i)\\Helium\\') { $fallbackProcess = $process }
-    }
     $tabs = $window.FindAll(
       [System.Windows.Automation.TreeScope]::Descendants,
       [System.Windows.Automation.PropertyCondition]::new(
@@ -987,20 +982,6 @@ foreach ($window in $windows) {
     }
   } catch {}
 }
-if ($fallbackProcess) {
-  [ClipsBrowserFocus]::ShowWindow($fallbackProcess.MainWindowHandle, 9) | Out-Null
-  [ClipsBrowserFocus]::SetForegroundWindow($fallbackProcess.MainWindowHandle) | Out-Null
-  Start-Sleep -Milliseconds 150
-  $keys = New-Object -ComObject WScript.Shell
-  $keys.SendKeys('^+a')
-  Start-Sleep -Milliseconds 250
-  $keys.SendKeys('Clips')
-  Start-Sleep -Milliseconds 150
-  $keys.SendKeys('{ENTER}')
-  if ($refresh) { Start-Sleep -Milliseconds 150; $keys.SendKeys('^r') }
-  [pscustomobject]@{ focused = $true; browser = $fallbackProcess.ProcessName; method = 'tab-search' } | ConvertTo-Json -Compress
-  exit 0
-}
 [pscustomobject]@{ focused = $false } | ConvertTo-Json -Compress
 `;
   const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
@@ -1010,7 +991,7 @@ if ($fallbackProcess) {
       timeout: 5000
     });
     const result = JSON.parse(stdout.trim() || '{}');
-    logger.info('browser UI focus requested', { focused: !!result.focused, browser: result.browser || '', method: result.method || 'automation' });
+    logger.info('browser UI focus requested', { focused: !!result.focused, browser: result.browser || '' });
     return !!result.focused;
   } catch (error) {
     logger.warn('could not focus existing browser tab', { message: error.message });

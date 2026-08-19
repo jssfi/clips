@@ -11,11 +11,12 @@ After completing an application change intended for nightly release:
 1. Add the new entry at the start of `src/changelog.json` with `"version": "next"`.
 2. Run `npm run check`.
 3. Commit the application changes locally. Do not push unless the user explicitly asks.
-4. Run `npm run version:nightly -- <stable-major.minor>`. This derives a monotonically ordered internal SemVer and the displayed `<major.minor>-<short-commit-hash>` from the committed source snapshot.
-5. Commit the generated `package.json`, `package-lock.json`, and changelog version as a local release-metadata commit. Do not push unless explicitly asked.
-6. Rebuild the application. For ordinary changes, run `npm run dist:release`. When OBS, FFmpeg, MPV, libmpv, or runtime packaging changes, run `npm run dist:fresh` first, then run `npm run dist:release`.
-7. Publish nightly with `powershell -NoProfile -ExecutionPolicy Bypass -File clips-worker/scripts/publish.ps1`.
-8. Verify `https://cdn.clips.jss.fi/latest.yml`, `https://cdn.clips.jss.fi/latest.json`, and every referenced artifact.
+4. Determine the next development line from the latest stable release before versioning. Nightlies after stable `<major>.<minor>` must use the next minor line (`<major>.<minor + 1>`); for example, stable `0.5` is followed by `0.6-nightly.1`, never `0.5-nightly.*`.
+5. Run `npm run version:nightly -- <next-major.minor>`. This derives a monotonically ordered internal SemVer and the displayed `<major.minor>-<short-commit-hash>` from the committed source snapshot.
+6. Commit the generated `package.json`, `package-lock.json`, and changelog version as a local release-metadata commit. Do not push unless explicitly asked.
+7. Rebuild the application. For ordinary changes, run `npm run dist:release`. When OBS, FFmpeg, MPV, libmpv, or runtime packaging changes, run `npm run dist:fresh` first, then run `npm run dist:release`.
+8. Publish nightly with `powershell -NoProfile -ExecutionPolicy Bypass -File clips-worker/scripts/publish.ps1`.
+9. Verify `https://cdn.clips.jss.fi/latest.yml`, `https://cdn.clips.jss.fi/latest.json`, and every referenced artifact.
 
 ### Stable release
 
