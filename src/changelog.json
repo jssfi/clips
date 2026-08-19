@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "New games are detected again",
+    "changes": [
+      "Fullscreen games that are not already monitored or ignored now correctly trigger the new-game popup."
+    ]
+  },
+  {
     "version": "0.6-nightly.3",
     "title": "Faster update installation",
     "changes": [

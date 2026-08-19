@@ -4,6 +4,7 @@ function normalizeProcessList(parsed) {
     path: item.path || '',
     title: item.title || item.name,
     windowClass: item.windowClass || '',
+    isFullscreen: item.isFullscreen === true,
     bounds: item.bounds ? {
       x: Number(item.bounds.x),
       y: Number(item.bounds.y),
