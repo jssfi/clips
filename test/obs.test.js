@@ -76,6 +76,28 @@ test('capture status retains frame-drop health counters', async () => {
   });
 });
 
+test('capture initialization retains available and selected encoders', async () => {
+  const controller = new ObsController();
+  controller.connected = true;
+  controller.settings = { clipLengthSeconds: 60 };
+  let request;
+  controller.request = async (...args) => {
+    request = args;
+    return {
+    encoders: [{ id: 'obs_x264', name: 'Software (x264)' }],
+    selectedEncoder: 'obs_x264'
+    };
+  };
+
+  await controller.applyRecordingSettings({
+    quality: 'HQ', encoder: 'obs_x264', resolution: '1920x1080', fps: 60, format: 'mkv', clipLengthSeconds: 60
+  });
+
+  assert.equal(request[1].encoder, 'obs_x264');
+  assert.deepEqual(controller.availableEncoders, [{ id: 'obs_x264', name: 'Software (x264)' }]);
+  assert.equal(controller.selectedEncoder, 'obs_x264');
+});
+
 test('high-frequency microphone meter polling stays out of the log', () => {
   const events = [];
   const controller = new ObsController(null, { info: (...args) => events.push(args) });

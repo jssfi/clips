@@ -125,6 +125,7 @@ const values = () => ({
   autoRecord: $("auto").checked,
   startWithWindows: $("startup").checked,
   obsRecordingQuality: $("recording-quality").value,
+  obsEncoder: $("encoder").value,
   obsResolution: $("resolution").value,
   obsFps: Number($("fps").value),
   obsFormat: $("format").value,
@@ -149,8 +150,19 @@ function restoreMicrophoneSelection(selectedId) {
   }
   select.value = wanted;
 }
+function renderEncoders(encoders, selectedId, activeId) {
+  const select = $("encoder");
+  const available = Array.isArray(encoders) ? encoders : [];
+  const signature = JSON.stringify({ available, activeId });
+  if (select.dataset.encoders === signature) return;
+  select.dataset.encoders = signature;
+  select.replaceChildren(new Option(activeId ? `Automatic (${available.find(item => item.id === activeId)?.name || activeId})` : "Automatic", "auto"));
+  for (const encoder of available) select.add(new Option(encoder.name, encoder.id));
+  select.value = available.some(encoder => encoder.id === selectedId) ? selectedId : "auto";
+}
 function render(s, fill = false) {
   state = s;
+  renderEncoders(s.availableEncoders, s.settings.obsEncoder, s.selectedEncoder);
   const updateReady = s.update?.status === "ready";
   $("update-button").classList.toggle("hidden", !updateReady);
   if (!updateReady) {
@@ -330,6 +342,7 @@ function render(s, fill = false) {
     $("auto").checked = s.settings.autoRecord;
     $("startup").checked = s.settings.startWithWindows;
     $("recording-quality").value = s.settings.obsRecordingQuality;
+    $("encoder").value = s.availableEncoders?.some(encoder => encoder.id === s.settings.obsEncoder) ? s.settings.obsEncoder : "auto";
     $("resolution").value = s.settings.obsResolution;
     $("fps").value = s.settings.obsFps;
     $("format").value = s.settings.obsFormat;

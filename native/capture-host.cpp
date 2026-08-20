@@ -227,6 +227,14 @@ static bool encoder_available(const char *wanted)
 	return false;
 }
 
+static const std::pair<const char *, const char *> VIDEO_ENCODERS[] = {
+	{"obs_nvenc_h264_tex", "NVIDIA NVENC H.264"},
+	{"obs_qsv11_v2", "Intel Quick Sync H.264"},
+	{"h264_texture_amf", "AMD AMF H.264"},
+	{"ffmpeg_nvenc", "NVIDIA NVENC H.264 (FFmpeg)"},
+	{"obs_x264", "Software (x264)"},
+};
+
 class CaptureHost {
 public:
 	~CaptureHost() { shutdown(); }
@@ -493,6 +501,8 @@ public:
 	}
 
 	bool initialized() const { return initialized_; }
+	const std::vector<std::pair<std::string, std::string>> &video_encoders() const { return video_encoders_; }
+	const std::string &selected_video_encoder() const { return selected_video_encoder_; }
 
 	void refresh_capture()
 	{
@@ -631,7 +641,7 @@ private:
 			extension_ = "mkv";
 		clip_seconds_ = std::max<int64_t>(5, obs_data_get_int(request, "clipLengthSeconds"));
 
-		create_video_encoder();
+		create_video_encoder(request);
 		create_audio_encoders();
 
 		record_output_.reset(obs_output_create("ffmpeg_muxer", "Clips Recording", nullptr, nullptr));
@@ -646,39 +656,47 @@ private:
 			configure_output_audio_tracks();
 	}
 
-	void create_video_encoder()
+	void create_video_encoder(obs_data_t *request)
 	{
-		static const char *ids[] = {
-			"obs_nvenc_h264_tex", "obs_qsv11_v2", "h264_texture_amf", "ffmpeg_nvenc", "obs_x264",
-		};
-		const char *selected = nullptr;
-		for (const char *id : ids) {
+		video_encoders_.clear();
+		for (const auto &[id, name] : VIDEO_ENCODERS) {
 			if (!encoder_available(id))
 				continue;
 			EncoderRef candidate(obs_video_encoder_create(id, "Clips Video Encoder", nullptr, nullptr));
-			if (candidate) {
-				video_encoder_ = std::move(candidate);
-				selected = id;
-				break;
-			}
+			if (candidate)
+				video_encoders_.emplace_back(id, name);
 		}
-		if (!video_encoder_)
+		if (video_encoders_.empty())
 			throw std::runtime_error("No compatible H.264 encoder is available.");
-		fprintf(stderr, "[capture-host] selected video encoder=%s\n", selected);
+
+		const std::string requested = obs_data_get_string(request, "encoder");
+		auto selected = video_encoders_.begin();
+		if (!requested.empty() && requested != "auto") {
+			const auto match = std::find_if(video_encoders_.begin(), video_encoders_.end(),
+				[&requested](const auto &encoder) { return encoder.first == requested; });
+			if (match != video_encoders_.end())
+				selected = match;
+		}
+		selected_video_encoder_ = selected->first;
+		video_encoder_.reset(obs_video_encoder_create(selected_video_encoder_.c_str(), "Clips Video Encoder", nullptr, nullptr));
+		if (!video_encoder_)
+			throw std::runtime_error("The selected H.264 encoder could not be created.");
+		fprintf(stderr, "[capture-host] selected video encoder=%s requested=%s\n",
+			selected_video_encoder_.c_str(), requested.empty() ? "auto" : requested.c_str());
 		fflush(stderr);
 
 		const int quality_value = quality_ == "Lossless" ? 1 : quality_ == "Small" ? 23 : quality_ == "Stream" ? 20 : 16;
 		DataRef settings(obs_data_create());
-		if (std::string(selected).find("nvenc") != std::string::npos) {
+		if (selected_video_encoder_.find("nvenc") != std::string::npos) {
 			obs_data_set_string(settings, "rate_control", "CQP");
 			obs_data_set_int(settings, "cqp", quality_value);
 			obs_data_set_string(settings, "preset", "p5");
 			obs_data_set_string(settings, "profile", "high");
-		} else if (std::string(selected).find("qsv") != std::string::npos) {
+		} else if (selected_video_encoder_.find("qsv") != std::string::npos) {
 			obs_data_set_string(settings, "rate_control", "ICQ");
 			obs_data_set_int(settings, "icq_quality", quality_value);
 			obs_data_set_string(settings, "profile", "high");
-		} else if (std::string(selected).find("amf") != std::string::npos) {
+		} else if (selected_video_encoder_.find("amf") != std::string::npos) {
 			obs_data_set_string(settings, "rate_control", "CQP");
 			obs_data_set_int(settings, "cqp", quality_value);
 			obs_data_set_string(settings, "preset", "quality");
@@ -1032,6 +1050,8 @@ private:
 	SceneRef scene_;
 	std::vector<SourceRef> sources_;
 	EncoderRef video_encoder_;
+	std::vector<std::pair<std::string, std::string>> video_encoders_;
+	std::string selected_video_encoder_;
 	std::vector<EncoderRef> audio_encoders_;
 	std::vector<std::string> active_audio_track_names_{"Combined"};
 	OutputRef record_output_;
@@ -1055,6 +1075,17 @@ static void send_response(int64_t id, bool ok, const std::string &error, Capture
 	obs_data_set_int(response, "laggedFrames", static_cast<long long>(host.lagged_frames()));
 	obs_data_set_int(response, "outputFrames", static_cast<long long>(host.output_frames()));
 	obs_data_set_int(response, "droppedFrames", static_cast<long long>(host.dropped_frames()));
+	if (host.initialized()) {
+		DataArrayRef encoders(obs_data_array_create());
+		for (const auto &[encoder_id, encoder_name] : host.video_encoders()) {
+			DataRef item(obs_data_create());
+			obs_data_set_string(item, "id", encoder_id.c_str());
+			obs_data_set_string(item, "name", encoder_name.c_str());
+			obs_data_array_push_back(encoders, item);
+		}
+		obs_data_set_array(response, "encoders", encoders);
+		obs_data_set_string(response, "selectedEncoder", host.selected_video_encoder().c_str());
+	}
 	if (devices) {
 		DataArrayRef items(obs_data_array_create());
 		for (const auto &[device_id, device_name] : *devices) {

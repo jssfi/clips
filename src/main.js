@@ -48,7 +48,7 @@ const DEFAULTS = {
   autoRecord: true, startWithWindows: true, clipHotkey: 'CommandOrControl+Shift+F10', markerHotkey: 'CommandOrControl+Shift+F9',
   gameProfiles: {},
   pollSeconds: 5, stopDelaySeconds: 20, clipLengthSeconds: 60, instantReplay: false, instantReplayLengthSeconds: 300,
-  obsRecordingQuality: 'HQ', obsResolution: '1920x1080', obsFps: 60, obsFormat: 'mkv',
+  obsRecordingQuality: 'HQ', obsEncoder: 'auto', obsResolution: '1920x1080', obsFps: 60, obsFormat: 'mkv',
   microphoneDeviceId: 'disabled', microphoneVolumePercent: 100, microphoneNoiseGateDb: -40,
   microphoneNvidiaNoiseRemoval: true,
   trimBitrate: 'original',
@@ -237,10 +237,11 @@ async function startSession({ recording = true, replayLengthSeconds = 0 } = {}) 
     obsFps: profile.fps || settings.obsFps,
     clipLengthSeconds: replayLengthSeconds || profile.clipLengthSeconds || settings.clipLengthSeconds };
   if (!await tryConnect(captureSettings)) throw new Error(lastError || 'The Clips capture engine could not start.');
-  if (obs.settings && ['obsRecordingQuality', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
+  if (obs.settings && ['obsRecordingQuality', 'obsEncoder', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
     .some(key => obs.settings[key] !== captureSettings[key])) {
     await obs.applyRecordingSettings({
       quality: captureSettings.obsRecordingQuality,
+      encoder: captureSettings.obsEncoder,
       resolution: captureSettings.obsResolution,
       fps: captureSettings.obsFps,
       format: captureSettings.obsFormat,
@@ -869,9 +870,21 @@ async function tryConnect(captureSettings = settings) {
   })();
   return connectPromise;
 }
+async function detectAvailableEncoders() {
+  const wasConnected = obs.connected;
+  if (!await tryConnect()) return;
+  logger.info('video encoders detected', {
+    available: obs.availableEncoders.map(encoder => encoder.id),
+    selected: obs.selectedEncoder
+  });
+  if (!wasConnected && !obs.lastStatus.recording && !obs.lastStatus.replayBuffer) {
+    await obs.disconnect().catch(() => {});
+  }
+}
 async function state() {
   const [recordings, archived] = await Promise.all([recentRecordings(), archivedRecordings()]);
-  return { settings, obs: await obs.status(), activeGames, autoRecordSuppressed, recordings, archivedRecordings: archived,
+  return { settings, obs: await obs.status(), availableEncoders: obs.availableEncoders, selectedEncoder: obs.selectedEncoder,
+    activeGames, autoRecordSuppressed, recordings, archivedRecordings: archived,
     sessionMarkers, storage: storageInsights(settings.recordingsFolder, [...recordings, ...archived]), lastError, lastClip,
     captureEngineInstalled: fs.existsSync(captureHostPath()), app: { version: displayVersion(app.getVersion()), buildTime: buildInfo.buildTime, runtimeVersion: RUNTIME_VERSION, runtimeReady: app.isPackaged ? isRuntimeReady(persistentRuntimeRoot) : fs.existsSync(captureHostPath()), changelog }, telemetry: { configured: !!telemetryEndpoint, mode: settings.telemetryMode }, update: updateState };
 }
@@ -1364,7 +1377,7 @@ async function saveSettings(next, { openWebOnDisable = true } = {}) {
     const nightlyUpdatesChanged = updated.nightlyUpdates !== previous.nightlyUpdates;
     const telemetryModeChanged = updated.telemetryMode !== previous.telemetryMode;
     const desktopWindowChanged = updated.desktopWindow !== previous.desktopWindow;
-    const recordingSettingsChanged = ['obsRecordingQuality', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
+    const recordingSettingsChanged = ['obsRecordingQuality', 'obsEncoder', 'obsResolution', 'obsFps', 'obsFormat', 'clipLengthSeconds']
       .some(key => updated[key] !== previous[key]);
     const idleReplayLengthChanged = updated.instantReplayLengthSeconds !== previous.instantReplayLengthSeconds;
     const microphoneVolumeChanged = updated.microphoneVolumePercent !== previous.microphoneVolumePercent;
@@ -1401,6 +1414,7 @@ async function saveSettings(next, { openWebOnDisable = true } = {}) {
     if (obs.connected && recordingSettingsChanged) {
       await obs.applyRecordingSettings({
         quality: settings.obsRecordingQuality,
+        encoder: settings.obsEncoder,
         resolution: settings.obsResolution,
         fps: settings.obsFps,
         format: settings.obsFormat,
@@ -1652,6 +1666,8 @@ app.whenReady().then(async () => {
       .then(() => broadcast())
       .catch(error => setError(new Error(`Media runtime setup failed: ${error.message}`)));
   }
+  await runtimeSetupPromise;
+  await detectAvailableEncoders();
   scheduleMonitor();
   trayController.create({
     openPreferredUi,

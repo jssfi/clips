@@ -63,6 +63,7 @@ test('telemetry preference only accepts explicit consent choices', () => {
 test('live capture restarts when folder or microphone changes', () => {
   assert.equal(captureRestartRequired(base, { ...base, recordingsFolder: 'F:\\Clips' }), true);
   assert.equal(captureRestartRequired(base, { ...base, microphoneDeviceId: 'microphone-id' }), true);
+  assert.equal(captureRestartRequired(base, { ...base, obsEncoder: 'obs_x264' }), true);
   assert.equal(captureRestartRequired(base, { ...base, retentionDays: 30 }), false);
 });
 

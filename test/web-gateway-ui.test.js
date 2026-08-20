@@ -13,6 +13,18 @@ test('experimental desktop-window setting makes the browser UI discoverable', ()
   assert.match(renderer, /desktopWindow: \$\("desktop-window"\)\.checked/);
 });
 
+test('settings expose detected encoders and submit the selected encoder', () => {
+  const html = source('src/index.html');
+  const renderer = source('src/renderer.js');
+  const main = source('src/main.js');
+  const host = source('native/capture-host.cpp');
+  assert.match(html, /id="encoder"[^>]*name="obsEncoder"/);
+  assert.match(renderer, /obsEncoder: \$\("encoder"\)\.value/);
+  assert.match(renderer, /renderEncoders\(s\.availableEncoders, s\.settings\.obsEncoder, s\.selectedEncoder\)/);
+  assert.match(main, /await detectAvailableEncoders\(\)/);
+  assert.match(host, /obs_video_encoder_create\(selected_video_encoder_\.c_str\(\)/);
+});
+
 test('local browser UI connects only to the restricted loopback gateway', () => {
   const web = source('clips-worker/src/web.js');
   assert.match(web, /http:\/\/127\.0\.0\.1:\$\{gatewayPort\}\/v1/);

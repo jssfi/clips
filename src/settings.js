@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 
 const QUALITIES = ['HQ', 'Small', 'Lossless', 'Stream'];
+const ENCODERS = ['auto', 'obs_nvenc_h264_tex', 'obs_qsv11_v2', 'h264_texture_amf', 'ffmpeg_nvenc', 'obs_x264'];
 const RESOLUTIONS = ['2560x1440', '1920x1080', '1280x720'];
 const FORMATS = ['mkv', 'mp4', 'mov', 'flv'];
 const TELEMETRY_MODES = ['diagnostics', 'version', 'off', 'pending'];
@@ -82,6 +83,7 @@ function normalizeSettings(defaults, input, { requireFolder = false } = {}) {
     instantReplay: boolean(source.instantReplay, fallback.instantReplay === true),
     instantReplayLengthSeconds: boundedInteger(source.instantReplayLengthSeconds, fallback.instantReplayLengthSeconds ?? 300, 5, 3600),
     obsRecordingQuality: choice(source.obsRecordingQuality, QUALITIES, fallback.obsRecordingQuality || 'HQ'),
+    obsEncoder: choice(source.obsEncoder, ENCODERS, fallback.obsEncoder || 'auto'),
     obsResolution: choice(source.obsResolution, RESOLUTIONS, fallback.obsResolution || '1920x1080'),
     obsFps: choice(finiteNumber(source.obsFps, fallback.obsFps ?? 60), [30, 60], fallback.obsFps || 60),
     obsFormat: choice(source.obsFormat, FORMATS, fallback.obsFormat || 'mkv'),
@@ -151,6 +153,7 @@ function captureRestartRequired(previous, next) {
     'microphoneDeviceId',
     'audioExecutables',
     'obsRecordingQuality',
+    'obsEncoder',
     'obsResolution',
     'obsFps',
     'obsFormat',

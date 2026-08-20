@@ -14,6 +14,7 @@ async function main() {
       obsResolution: '1280x720',
       obsFps: 30,
       obsRecordingQuality: 'Small',
+      obsEncoder: 'obs_x264',
       obsFormat: 'mkv',
       clipLengthSeconds: 5
     }
@@ -21,6 +22,9 @@ async function main() {
   const status = await controller.status();
   assert.equal(status.connected, true);
   assert.equal(status.recording, false);
+  assert.ok(controller.availableEncoders.length > 0);
+  assert.ok(controller.availableEncoders.some(encoder => encoder.id === controller.selectedEncoder));
+  assert.equal(controller.selectedEncoder, 'obs_x264');
   const microphones = await controller.microphones();
   assert.ok(Array.isArray(microphones));
   for (const microphone of microphones) {

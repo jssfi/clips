@@ -12,6 +12,8 @@ class ObsController {
     this.stdoutBuffer = '';
     this.settings = null;
     this.applications = [];
+    this.availableEncoders = [];
+    this.selectedEncoder = '';
     this.lastStatus = { connected: false, recording: false, replayBuffer: false, durationMs: 0, renderedFrames: 0, laggedFrames: 0, outputFrames: 0, droppedFrames: 0 };
   }
 
@@ -127,16 +129,19 @@ class ObsController {
     });
     const [width, height] = String(settings.obsResolution).split('x').map(Number);
     try {
-      await this.request('initialize', {
+      const initialized = await this.request('initialize', {
         runtimeRoot,
         configRoot,
         width,
         height,
         fps: Number(settings.obsFps),
         quality: settings.obsRecordingQuality,
+        encoder: settings.obsEncoder,
         format: settings.obsFormat,
         clipLengthSeconds: Number(settings.clipLengthSeconds)
       }, 60000);
+      this.availableEncoders = Array.isArray(initialized.encoders) ? initialized.encoders : [];
+      this.selectedEncoder = String(initialized.selectedEncoder || '');
       this.connected = true;
       this.lastStatus.connected = true;
       this.onEvent?.();
@@ -247,31 +252,36 @@ class ObsController {
     await this.request('save');
   }
 
-  async applyRecordingSettings({ quality, resolution, fps, format, clipLengthSeconds }) {
+  async applyRecordingSettings({ quality, encoder, resolution, fps, format, clipLengthSeconds }) {
     if (!this.connected) return;
     const [width, height] = String(resolution).split('x').map(Number);
     this.settings = {
       ...this.settings,
       obsRecordingQuality: quality,
+      obsEncoder: encoder,
       obsResolution: resolution,
       obsFps: fps,
       obsFormat: format,
       clipLengthSeconds: clipLengthSeconds ?? this.settings?.clipLengthSeconds
     };
-    await this.request('configure', {
+    const configured = await this.request('configure', {
       width,
       height,
       fps: Number(fps),
       quality,
+      encoder,
       format,
       clipLengthSeconds: Number(this.settings.clipLengthSeconds)
     }, 60000);
+    this.availableEncoders = Array.isArray(configured.encoders) ? configured.encoders : this.availableEncoders;
+    this.selectedEncoder = String(configured.selectedEncoder || this.selectedEncoder);
   }
 
   async setReplayBufferDuration(seconds) {
     if (!this.settings) return;
     await this.applyRecordingSettings({
       quality: this.settings.obsRecordingQuality,
+      encoder: this.settings.obsEncoder,
       resolution: this.settings.obsResolution,
       fps: this.settings.obsFps,
       format: this.settings.obsFormat,
