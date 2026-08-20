@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.6-nightly.6",
     "title": "Choose your recording encoder",
     "changes": [
       "Clips now detects usable video encoders at startup and lets you choose one in Settings; the selection is applied directly to new recordings and replays."
