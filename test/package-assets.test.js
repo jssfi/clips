@@ -9,10 +9,7 @@ const packageConfigurations = [
   'electron-builder.update.json',
   'electron-builder.staged.json'
 ];
-const browserAssets = [
-  'clips-worker/src/web.js',
-  'clips-worker/src/web.css'
-];
+const browserAssets = ['clips-worker/src/web.js'];
 
 test('every application package includes the browser UI assets', () => {
   for (const asset of browserAssets) {

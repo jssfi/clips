@@ -34,7 +34,6 @@ const execFileAsync = promisify(execFile);
 let releaseConfig = {};
 try { releaseConfig = require('./release-config.json'); } catch {}
 const DEFAULT_UPDATE_URL = String(releaseConfig.updateUrl || '');
-const WEB_APP_URL = String(releaseConfig.webAppUrl || 'https://clips.jss.fi/app/');
 const DEFAULT_NVAFX_SDK_DIR = 'C:\\Program Files\\NVIDIA Corporation\\NVIDIA Audio Effects SDK';
 if (!process.env.NVAFX_SDK_DIR && fs.existsSync(path.join(DEFAULT_NVAFX_SDK_DIR, 'NVAudioEffects.dll'))) {
   // Staged updates relaunch from the old process, which does not inherit newly
@@ -1609,7 +1608,6 @@ app.whenReady().then(async () => {
     invoke: gatewayInvoke,
     logger,
     allowedOrigins: [
-      new URL(WEB_APP_URL).origin,
       `http://127.0.0.1:${DEFAULT_GATEWAY_PORT}`,
       ...(!app.isPackaged ? ['http://127.0.0.1:8787', 'http://localhost:8787'] : [])
     ],
@@ -1618,8 +1616,7 @@ app.whenReady().then(async () => {
       styles: path.join(__dirname, 'styles.css'),
       renderer: path.join(__dirname, 'renderer.js'),
       changelog: path.join(__dirname, 'changelog.json'),
-      web: path.join(__dirname, '..', 'clips-worker', 'src', 'web.js'),
-      webCss: path.join(__dirname, '..', 'clips-worker', 'src', 'web.css')
+      web: path.join(__dirname, '..', 'clips-worker', 'src', 'web.js')
     },
     uiVersion: displayVersion(app.getVersion()),
     onStaleUi: refreshStaleBrowserUi,
@@ -1644,7 +1641,7 @@ app.whenReady().then(async () => {
   try {
     await Promise.all([recordingMediaServer.start(), gateway.start()]);
     gatewayReady = true;
-    logger.info('web gateway ready', { port: DEFAULT_GATEWAY_PORT, origin: new URL(WEB_APP_URL).origin });
+    logger.info('web gateway ready', { port: DEFAULT_GATEWAY_PORT });
   } catch (error) {
     gatewayReady = false;
     setError(new Error(`Browser gateway could not start: ${error.message}`));

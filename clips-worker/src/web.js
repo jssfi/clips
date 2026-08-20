@@ -1,70 +1,8 @@
 (() => {
-  const now = Date.now();
   const callbacks = { state: [], trim: [], frame: [], mix: [] };
   const clone = value => structuredClone(value);
-  const recording = (name, minutesAgo, bytes, kind = 'replay', favorite = false, day) => ({
-    path: `demo://${name}`,
-    name,
-    modified: new Date(now - minutesAgo * 60_000).toISOString(),
-    bytes,
-    kind,
-    favorite,
-    ...(day ? { day } : {})
-  });
-  const demoState = {
-    settings: {
-      recordingsFolder: 'C:\\Users\\You\\Videos\\Clips',
-      retentionDays: 14,
-      storageCleanupMode: 'disk',
-      maxDiskUsagePercent: 80,
-      maxRawRecordingGigabytes: 250,
-      gameExecutables: ['VALORANT-Win64-Shipping.exe', 'Minecraft.exe'],
-      audioExecutables: ['Discord.exe'],
-      gameProfiles: {},
-      autoRecord: true,
-      startWithWindows: true,
-      desktopWindow: true,
-      clipHotkey: 'CommandOrControl+Shift+F10',
-      markerHotkey: 'CommandOrControl+Shift+F9',
-      stopDelaySeconds: 20,
-      clipLengthSeconds: 60,
-      instantReplay: false,
-      instantReplayLengthSeconds: 300,
-      obsRecordingQuality: 'HQ',
-      obsResolution: '1920x1080',
-      obsFps: 60,
-      obsFormat: 'mkv',
-      microphoneDeviceId: 'disabled',
-      microphoneVolumePercent: 100,
-      microphoneNoiseGateDb: -40,
-      microphoneNvidiaNoiseRemoval: true,
-      trimBitrate: 'original',
-      nightlyUpdates: false,
-      telemetryMode: 'off'
-    },
-    obs: { connected: true, recording: false },
-    activeGames: [],
-    autoRecordSuppressed: false,
-    recordings: [
-      recording('ace-on-sunset.mkv', 8, 148_897_792, 'replay', true),
-      recording('last-second-clutch.mkv', 24, 112_197_632),
-      recording('ranked-session.mkv', 42, 2_684_354_560, 'recording')
-    ],
-    archivedRecordings: [
-      recording('three-piece.mkv', 1_480, 96_468_992, 'replay', false, '2026-08-09'),
-      recording('weekend-session.mkv', 2_910, 1_932_735_283, 'recording', false, '2026-08-08')
-    ],
-    storage: { totalBytes: 4_974_776_259, driveFreeBytes: 214_748_364_800, byGame: [] },
-    lastError: '',
-    lastClip: null,
-    captureEngineInstalled: true,
-    app: { version: 'web demo', buildTime: new Date().toISOString(), runtimeVersion: 'desktop only', runtimeReady: true, changelog: [] },
-    telemetry: { configured: false, mode: 'off' },
-    update: { status: 'idle', configured: false }
-  };
 
   const sessionKey = 'clips-gateway-session-v1';
-  const localUi = location.hostname === '127.0.0.1';
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ''));
   let gatewayToken = fragment.get('gateway') || '';
   let gatewayPort = Number(fragment.get('port')) || 32191;
@@ -72,8 +10,7 @@
   let gatewayAttempted = false;
   let gatewayReconnectTimer = null;
   let events = null;
-  let banner = null;
-  let currentState = demoState;
+  let currentState = null;
   let browserMediaDuration = 0;
   let browserMediaOffset = 0;
   let browserMediaPath = '';
@@ -110,9 +47,8 @@
   }
   function setConnected(connected) {
     gatewayConnected = connected;
-    document.title = connected || localUi ? 'Clips' : 'Clips — browser demo';
+    document.title = 'Clips';
     document.body?.classList.toggle('gateway-connected', connected);
-    updateBanner();
   }
   function connectEvents() {
     events?.close();
@@ -133,7 +69,6 @@
       events?.close();
       events = null;
       setConnected(false);
-      updateBanner('Reconnecting to Clips…');
       clearTimeout(gatewayReconnectTimer);
       gatewayReconnectTimer = setTimeout(reconnectGateway, 500);
     });
@@ -143,11 +78,7 @@
       await activateGateway();
       callbacks.state.forEach(callback => callback(clone(currentState)));
     } catch {
-      if (localUi) {
-        await pairGateway();
-        return;
-      }
-      gatewayReconnectTimer = setTimeout(reconnectGateway, 1000);
+      try { await pairGateway(); } catch {}
     }
   }
   async function activateGateway() {
@@ -171,15 +102,9 @@
     }
   }
   async function pairGateway() {
-    if (location.protocol === 'https:') {
-      location.assign(`http://127.0.0.1:${gatewayPort}/app/`);
-      return;
-    }
-    updateBanner('Looking for Clips…');
     try {
       const health = await responseJson(await localFetch(`${gatewayBase()}/health`));
       if (health.product !== 'jss/clips' || health.apiVersion !== 1) throw new Error('The installed Clips gateway is not compatible.');
-      updateBanner('Approve the connection in Clips…');
       const paired = await responseJson(await localFetch(`${gatewayBase()}/pair`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,51 +116,19 @@
       callbacks.state.forEach(callback => callback(clone(currentState)));
     } catch (error) {
       setConnected(false);
-      updateBanner(error.message || 'Clips is not running.');
-      if (localUi) {
-        clearTimeout(gatewayReconnectTimer);
-        gatewayReconnectTimer = setTimeout(reconnectGateway, 1000);
-      }
+      clearTimeout(gatewayReconnectTimer);
+      gatewayReconnectTimer = setTimeout(reconnectGateway, 1000);
+      throw error;
     }
   }
-
-  function updateBanner(message = '') {
-    if (!banner) return;
-    if (localUi) {
-      banner.remove();
-      banner = null;
-      return;
-    }
-    if (gatewayConnected) {
-      banner.innerHTML = '<span><strong>Connected</strong> — this page is controlling Clips on this computer.</span><button type="button" data-gateway-refresh>Refresh</button>';
-      banner.querySelector('[data-gateway-refresh]').onclick = () => rpc('getState').then(state => {
-        currentState = state;
-        callbacks.state.forEach(callback => callback(clone(state)));
-      });
-      return;
-    }
-    banner.innerHTML = `<span><strong>Browser demo</strong> — ${message || 'connect the installed app to use the real recorder.'}</span><button type="button" data-gateway-connect>Connect Clips</button><a href="/download/setup">Get the app</a>`;
-    banner.querySelector('[data-gateway-connect]').onclick = pairGateway;
-  }
-
-  const demoEmit = () => callbacks.state.forEach(callback => callback(clone(demoState)));
   const desktopOnly = async feature => { throw new Error(`${feature} needs a connection to the installed Windows app.`); };
   async function getState() {
-    if (!demoState.app.changelog.length) {
-      try { demoState.app.changelog = await fetch('changelog.json').then(response => response.json()); } catch {}
-    }
     await tryGateway();
-    if (localUi && !gatewayConnected && !gatewayToken) await pairGateway();
-    return clone(gatewayConnected ? currentState : demoState);
+    if (!gatewayConnected) await pairGateway();
+    if (!currentState) throw new Error('Clips is not connected.');
+    return clone(currentState);
   }
-  const use = (method, fallback) => (...args) => gatewayConnected
-    ? rpc(method, args)
-    : localUi ? desktopOnly('This action') : fallback(...args);
-  const setDemoFavorite = async (filePath, favorite) => {
-    [...demoState.recordings, ...demoState.archivedRecordings].forEach(item => { if (item.path === filePath) item.favorite = favorite; });
-    demoEmit();
-    return clone(demoState);
-  };
+  const use = method => (...args) => gatewayConnected ? rpc(method, args) : desktopOnly('This action');
   async function startBrowserPlayback(filePath) {
     if (!gatewayConnected) return desktopOnly('Video playback');
     const loading = document.getElementById('mpv-loading');
@@ -277,23 +170,23 @@
 
   window.clips = {
     getState,
-    installUpdate: use('installUpdate', () => desktopOnly('Installing updates')),
-    checkForUpdates: use('checkForUpdates', async () => false),
-    copyUpdateDiagnostics: use('copyUpdateDiagnostics', () => desktopOnly('Copying update diagnostics')),
-    saveSettings: use('saveSettings', async settings => { demoState.settings = { ...demoState.settings, ...settings }; demoEmit(); return clone(demoState); }),
-    beginHotkeyCapture: use('beginHotkeyCapture', async () => true),
-    cancelHotkeyCapture: use('cancelHotkeyCapture', async () => true),
-    connect: use('connect', async () => clone(demoState)),
-    toggleRecording: use('toggleRecording', async () => { demoState.obs.recording = !demoState.obs.recording; demoEmit(); return clone(demoState); }),
-    saveClip: use('saveClip', async () => { demoState.lastClip = new Date().toISOString(); demoState.recordings.unshift(recording(`browser-demo-${demoState.recordings.length + 1}.mkv`, 0, 104_857_600)); demoEmit(); return clone(demoState); }),
-    openFolder: use('openFolder', () => desktopOnly('Opening folders')),
-    openLibraryFolder: use('openLibraryFolder', () => desktopOnly('Opening folders')),
-    openRecording: use('openRecording', () => desktopOnly('Playback')),
-    getRecordingThumbnail: use('getRecordingThumbnail', async () => null),
-    setRecordingFavorite: use('setRecordingFavorite', setDemoFavorite),
-    updateRecordingMetadata: use('updateRecordingMetadata', async (filePath, change) => { const item = [...demoState.recordings, ...demoState.archivedRecordings].find(entry => entry.path === filePath); if (item) Object.assign(item, change); demoEmit(); return clone(demoState); }),
-    stitchRecordings: use('stitchRecordings', () => desktopOnly('Stitching clips')),
-    deleteRecordings: use('deleteRecordings', async filePaths => { demoState.recordings = demoState.recordings.filter(item => !filePaths.includes(item.path)); demoState.archivedRecordings = demoState.archivedRecordings.filter(item => !filePaths.includes(item.path)); demoEmit(); return clone(demoState); }),
+    installUpdate: use('installUpdate'),
+    checkForUpdates: use('checkForUpdates'),
+    copyUpdateDiagnostics: use('copyUpdateDiagnostics'),
+    saveSettings: use('saveSettings'),
+    beginHotkeyCapture: use('beginHotkeyCapture'),
+    cancelHotkeyCapture: use('cancelHotkeyCapture'),
+    connect: use('connect'),
+    toggleRecording: use('toggleRecording'),
+    saveClip: use('saveClip'),
+    openFolder: use('openFolder'),
+    openLibraryFolder: use('openLibraryFolder'),
+    openRecording: use('openRecording'),
+    getRecordingThumbnail: use('getRecordingThumbnail'),
+    setRecordingFavorite: use('setRecordingFavorite'),
+    updateRecordingMetadata: use('updateRecordingMetadata'),
+    stitchRecordings: use('stitchRecordings'),
+    deleteRecordings: use('deleteRecordings'),
     startMpv: startBrowserPlayback,
     setMpvBounds: async () => true,
     mpvStatus: async () => ({ running: !!browserVideo()?.src, duration: browserMediaDuration || browserVideo()?.duration || 0, currentTime: browserMediaOffset + (browserVideo()?.currentTime || 0), paused: browserVideo()?.paused ?? true }),
@@ -310,32 +203,22 @@
       await video.requestFullscreen();
       return { inPage: true };
     },
-    listMicrophones: use('listMicrophones', async () => []),
-    microphoneLevel: use('microphoneLevel', async () => -60),
+    listMicrophones: use('listMicrophones'),
+    microphoneLevel: use('microphoneLevel'),
     setModalAppearance: async () => true,
     onTrimProgress: callback => callbacks.trim.push(callback),
     onMpvFrame: callback => callbacks.frame.push(callback),
-    trimRecording: use('trimRecording', () => desktopOnly('Clip exporting')),
-    getAudioTracks: use('getAudioTracks', async () => []),
-    mixRecordingAudio: use('mixRecordingAudio', () => desktopOnly('Audio mixing')),
+    trimRecording: use('trimRecording'),
+    getAudioTracks: use('getAudioTracks'),
+    mixRecordingAudio: use('mixRecordingAudio'),
     onAudioMixProgress: callback => callbacks.mix.push(callback),
-    chooseFolder: use('chooseFolder', () => desktopOnly('Choosing folders')),
-    openLogs: use('openLogs', () => desktopOnly('Diagnostic logs')),
-    listProcesses: use('listProcesses', async () => [
-      { name: 'VALORANT-Win64-Shipping.exe', title: 'VALORANT' },
-      { name: 'Minecraft.exe', title: 'Minecraft' },
-      { name: 'Discord.exe', title: 'Discord' }
-    ]),
+    chooseFolder: use('chooseFolder'),
+    openLogs: use('openLogs'),
+    listProcesses: use('listProcesses'),
     onState: callback => callbacks.state.push(callback)
   };
 
   window.addEventListener('DOMContentLoaded', () => {
-    document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="web.css">');
-    if (!localUi) {
-      document.body.insertAdjacentHTML('beforeend', '<aside class="web-demo-banner" aria-live="polite"></aside>');
-      banner = document.querySelector('.web-demo-banner');
-      updateBanner();
-    }
     const video = browserVideo();
     const showLoading = () => document.getElementById('mpv-loading')?.classList.remove('hidden');
     const hideLoading = () => document.getElementById('mpv-loading')?.classList.add('hidden');

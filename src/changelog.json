@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Public browser demo removed",
+    "changes": [
+      "Removed the public browser demo and its simulated recordings while keeping the private local browser controls for the installed app."
+    ]
+  },
+  {
     "version": "0.6-nightly.4",
     "title": "New games are detected again",
     "changes": [

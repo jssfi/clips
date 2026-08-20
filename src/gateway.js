@@ -87,7 +87,6 @@ function createGateway({
         '/app/styles.css': ['styles', 'text/css; charset=utf-8'],
         '/app/renderer.js': ['renderer', 'text/javascript; charset=utf-8'],
         '/app/web.js': ['web', 'text/javascript; charset=utf-8'],
-        '/app/web.css': ['webCss', 'text/css; charset=utf-8'],
         '/app/changelog.json': ['changelog', 'application/json; charset=utf-8']
       }[url.pathname];
       if (asset) {

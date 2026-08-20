@@ -34,30 +34,6 @@ export default {
         return new Response('The Windows download is temporarily unavailable.', { status: 503 });
       }
       const installer = `jss-clips-setup-${version}-x64.exe`;
-      if (pathname === '/download/') {
-        const downloadUrl = `/cdn/stable/${installer}`;
-        return new Response(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="2;url=/app/">
-  <title>Downloading Clips</title>
-</head>
-<body>
-  <p>Your Clips download is starting. <a href="${downloadUrl}">Download it manually</a>.</p>
-  <iframe hidden src="${downloadUrl}" title="Clips installer download"></iframe>
-  <script>setTimeout(() => location.replace('/app/'), 1500);</script>
-</body>
-</html>`, {
-          headers: {
-            'Cache-Control': 'no-store, max-age=0',
-            'Content-Security-Policy': "default-src 'none'; frame-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
-            'Content-Type': 'text/html; charset=utf-8',
-            'X-Content-Type-Options': 'nosniff'
-          }
-        });
-      }
       return new Response(null, {
         status: 307,
         headers: {
@@ -75,9 +51,11 @@ export default {
       return Response.redirect(new URL(`/cdn/jss-clips-source-${version}.zip`, request.url), 307);
     }
     if (pathname === '/app' || pathname.startsWith('/app/')) {
-      if (pathname === '/app') return Response.redirect(new URL('/app/', request.url), 308);
-      return env.ASSETS.fetch(request);
+      return new Response('The Clips browser demo has been removed.', {
+        status: 410,
+        headers: { 'Cache-Control': 'no-store, max-age=0', 'Content-Type': 'text/plain; charset=utf-8' }
+      });
     }
-    return Response.redirect(new URL('/app/', request.url), 307);
+    return Response.redirect(new URL('/download/', request.url), 307);
   }
 } satisfies ExportedHandler<Env>;

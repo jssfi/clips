@@ -13,15 +13,12 @@ test('experimental desktop-window setting makes the browser UI discoverable', ()
   assert.match(renderer, /desktopWindow: \$\("desktop-window"\)\.checked/);
 });
 
-test('browser build connects to the restricted loopback gateway and retains demo fallback', () => {
+test('local browser UI connects only to the restricted loopback gateway', () => {
   const web = source('clips-worker/src/web.js');
   assert.match(web, /http:\/\/127\.0\.0\.1:\$\{gatewayPort\}\/v1/);
   assert.match(web, /targetAddressSpace: 'local'/);
-  assert.match(web, /Connect Clips/);
-  assert.match(web, /location\.assign\(`http:\/\/127\.0\.0\.1:\$\{gatewayPort\}\/app\/`\)/);
-  assert.match(web, /const localUi = location\.hostname === '127\.0\.0\.1'/);
-  assert.match(web, /if \(!localUi\) \{/);
-  assert.match(web, /gatewayConnected \? currentState : demoState/);
+  assert.doesNotMatch(web, /demoState|Browser demo|demo:\/\//);
+  assert.match(web, /if \(!gatewayConnected\) await pairGateway\(\)/);
 });
 
 test('shared player supports browser video without removing native canvas playback', () => {

@@ -39,12 +39,6 @@ try {
       cwd: projectRoot,
       env: { ...isolatedEnv, CLIPS_HERMETIC_CHECK: '1' }
     });
-    if (workerName === 'clips-worker') {
-      await run(join(projectRoot, 'clips-worker', 'scripts', 'build-web.mjs'), [], {
-        cwd: projectRoot,
-        env: { ...isolatedEnv, CLIPS_WEB_OUTPUT_ROOT: join(checkRoot, 'public', 'app') }
-      });
-    }
     await run(wrangler, ['types', join(checkRoot, 'worker-configuration.d.ts'), '--config', configPath], { cwd: checkRoot, env: isolatedEnv });
     await run(tsc, ['--project', join(checkRoot, 'tsconfig.json'), '--noEmit'], { cwd: checkRoot, env: isolatedEnv });
     await run(wrangler, ['deploy', '--dry-run', '--config', configPath], { cwd: checkRoot, env: isolatedEnv });
