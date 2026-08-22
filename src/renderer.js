@@ -20,12 +20,21 @@ const shortTimeFormatter = new Intl.DateTimeFormat(undefined, { hour: "numeric",
 const archiveDateFormatter = new Intl.DateTimeFormat(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 const megabyteFormatter = new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 });
 const gigabyteFormatter = new Intl.NumberFormat(undefined, { style: "unit", unit: "gigabyte", maximumFractionDigits: 1 });
+const formatBytes = bytes => bytes >= 1073741824
+  ? gigabyteFormatter.format(bytes / 1073741824)
+  : megabyteFormatter.format(bytes / 1048576);
+const recordingDetails = recording => {
+  const time = shortTimeFormatter.format(new Date(recording.modified));
+  const markers = recording.markers?.length ? ` · ${recording.markers.length} marker${recording.markers.length === 1 ? "" : "s"}` : "";
+  return `${time} · ${formatBytes(recording.bytes)}${markers}`;
+};
 const playerIcons = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
   fullscreen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3zm11-5h5v5h-2V6h-3zM6 15v3h3v2H4v-5zm12 0h2v5h-5v-2h3z"/></svg>',
 };
 const thumbnailCache = new Map();
+const recentDetailElements = new Map();
 const selectedRecordingPaths = new Set();
 let pendingDeletePaths = [];
 const thumbnailObserver = new IntersectionObserver((entries) => {
@@ -230,9 +239,6 @@ function render(s, fill = false, refreshLibrary = false) {
       : `${s.lastError} Reconnect the capture engine or restart Clips.`
     : "";
   $("error").classList.toggle("hidden", !s.lastError);
-  const formatBytes = bytes => bytes >= 1073741824
-    ? gigabyteFormatter.format(bytes / 1073741824)
-    : megabyteFormatter.format(bytes / 1048576);
   const unknownStorage = s.storage?.byGame?.some(item => item.game === "Older recordings (game unknown)");
   $("storage-insights-summary").textContent = `${formatBytes(s.storage?.totalBytes || 0)} in Clips · ${formatBytes(s.storage?.driveFreeBytes || 0)} free on the drive.${unknownStorage ? " Footage saved before game tracking is grouped as unknown." : ""}`;
   $("storage-by-game").innerHTML = s.storage?.byGame?.length ? s.storage.byGame.map(item => `<div class="settings-row"><span><strong>${escapeHtml(item.game)}</strong><small>${formatBytes(item.bytes)}</small></span><meter min="0" max="${s.storage.totalBytes || 1}" value="${item.bytes}"></meter></div>`).join("") : '<div class="settings-row"><span class="muted">No recordings to measure yet.</span></div>';
@@ -260,7 +266,13 @@ function render(s, fill = false, refreshLibrary = false) {
         )
         .join("")
     : '<div class="muted">No extra applications added. The active game audio is still recorded.</div>';
-  const libraryJson = JSON.stringify([s.recordings || [], s.archivedRecordings || []]);
+  const libraryJson = JSON.stringify([
+    (s.recordings || []).map(recording => [
+      recording.path, recording.name, recording.title, recording.game, recording.kind,
+      recording.favorite, recording.tags || [], recording.markers?.length || 0,
+    ]),
+    s.archivedRecordings || [],
+  ]);
   if (refreshLibrary || libraryJson !== renderedLibraryJson) {
   const organize = (items) => {
     const query = libraryQuery.toLowerCase();
@@ -281,12 +293,9 @@ function render(s, fill = false, refreshLibrary = false) {
     : "Recordings from this session.";
   const renderFiles = (items, emptyTitle, emptyDetail) => items.length
     ? items.map((recording) => {
-        const time = shortTimeFormatter.format(new Date(recording.modified));
-        const size = formatBytes(recording.bytes);
         const favoriteLabel = recording.favorite ? "Remove from favorites" : "Add to favorites";
         const selected = selectedRecordingPaths.has(recording.path);
-        const markers = recording.markers?.length ? ` &middot; ${recording.markers.length} marker${recording.markers.length === 1 ? "" : "s"}` : "";
-        return `<article class="recording-card${recording.favorite ? " favorite" : ""}${selected ? " selected" : ""}"><button class="recording-open" data-recording-path="${escapeHtml(recording.path)}" data-recording-name="${escapeHtml(recording.title || recording.name)}" aria-label="Play ${escapeHtml(recording.title || recording.name)}"><span class="recording-preview"><img class="recording-thumbnail" data-thumbnail-path="${escapeHtml(recording.path)}" alt=""><i class="recording-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i><i class="recording-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i></span><span class="recording-meta"><strong title="${escapeHtml(recording.title || recording.name)}">${escapeHtml(recording.title || recording.name)}</strong><span>${time} &middot; ${size}${markers}</span></span></button><button class="recording-select" data-select-path="${escapeHtml(recording.path)}" aria-pressed="${selected}" aria-label="${selected ? "Deselect" : "Select"} ${escapeHtml(recording.name)}" title="${selected ? "Deselect" : "Select"}"><i></i></button><button class="recording-favorite" data-favorite-path="${escapeHtml(recording.path)}" data-favorite="${recording.favorite ? "true" : "false"}" aria-label="${favoriteLabel}" title="${favoriteLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button><div class="recording-actions"><button class="recording-delete" data-delete-path="${escapeHtml(recording.path)}" data-delete-name="${escapeHtml(recording.name)}" aria-label="Delete ${escapeHtml(recording.name)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></article>`;
+        return `<article class="recording-card${recording.favorite ? " favorite" : ""}${selected ? " selected" : ""}"><button class="recording-open" data-recording-path="${escapeHtml(recording.path)}" data-recording-name="${escapeHtml(recording.title || recording.name)}" aria-label="Play ${escapeHtml(recording.title || recording.name)}"><span class="recording-preview"><img class="recording-thumbnail" data-thumbnail-path="${escapeHtml(recording.path)}" alt=""><i class="recording-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i><i class="recording-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 7 8 5-8 5z"/></svg></i></span><span class="recording-meta"><strong title="${escapeHtml(recording.title || recording.name)}">${escapeHtml(recording.title || recording.name)}</strong><span data-recording-details-path="${escapeHtml(recording.path)}">${escapeHtml(recordingDetails(recording))}</span></span></button><button class="recording-select" data-select-path="${escapeHtml(recording.path)}" aria-pressed="${selected}" aria-label="${selected ? "Deselect" : "Select"} ${escapeHtml(recording.name)}" title="${selected ? "Deselect" : "Select"}"><i></i></button><button class="recording-favorite" data-favorite-path="${escapeHtml(recording.path)}" data-favorite="${recording.favorite ? "true" : "false"}" aria-label="${favoriteLabel}" title="${favoriteLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg></button><div class="recording-actions"><button class="recording-delete" data-delete-path="${escapeHtml(recording.path)}" data-delete-name="${escapeHtml(recording.name)}" aria-label="Delete ${escapeHtml(recording.name)}" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></article>`;
       }).join("")
     : `<div class="empty compact"><div><strong>${emptyTitle}</strong><span>${emptyDetail}</span></div></div>`;
   $("replay-count").textContent = replays.length;
@@ -325,7 +334,18 @@ function render(s, fill = false, refreshLibrary = false) {
     : '<div class="empty archive-empty"><div><strong>No previous days yet</strong><span>Older recordings will appear here, grouped by day.</span></div></div>';
   loadRecordingThumbnails();
   updateSelectionBar();
+  recentDetailElements.clear();
+  for (const id of ["recent-favorite-list", "replay-list", "recording-list"]) {
+    $(id).querySelectorAll("[data-recording-details-path]").forEach(element => {
+      recentDetailElements.set(element.dataset.recordingDetailsPath, element);
+    });
+  }
   renderedLibraryJson = libraryJson;
+  }
+  for (const recording of s.recordings || []) {
+    const element = recentDetailElements.get(recording.path);
+    const details = recordingDetails(recording);
+    if (element && element.textContent !== details) element.textContent = details;
   }
   $("footer-status").textContent = s.autoRecordSuppressed
     ? "Stopped until the game closes"
@@ -1228,7 +1248,7 @@ $("selection-stitch").onclick = async () => {
   const button = $("selection-stitch"); button.disabled = true; button.textContent = "Stitching…";
   try {
     const result = await window.clips.stitchRecordings([...selectedRecordingPaths]);
-    selectedRecordingPaths.clear(); render(result.state); navigateToPage("recent");
+    selectedRecordingPaths.clear(); render(result.state, false, true); navigateToPage("recent");
   } catch (error) { alert(error.message); }
   finally { button.textContent = "Stitch clips"; updateSelectionBar(); }
 };
