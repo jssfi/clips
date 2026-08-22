@@ -4,6 +4,17 @@
 
 Every published build must have a user-facing entry in `src/changelog.json`.
 
+### Worktree release gate
+
+Before starting any versioning, release build, or publish step, inspect the current branch and worktree with `git status --short --branch` and `git worktree list --porcelain`.
+
+Only the primary worktree on `main` may version or publish an update. If you are in a newly created or linked worktree, or on any branch other than `main`:
+
+1. Do not run `npm run version:nightly`, create release-metadata commits, run `npm run dist:release` or `npm run dist:fresh`, or invoke `clips-worker/scripts/publish.ps1`.
+2. Complete the scoped changes and run the relevant checks, including `npm run check` for application changes.
+3. Commit the changes on the worktree's branch, push that branch, and open a pull request targeting `main`.
+4. Report the pull request as the handoff. Publishing must happen later from the primary `main` worktree after the pull request is merged.
+
 ### Nightly release
 
 After completing an application change intended for nightly release:
@@ -30,7 +41,7 @@ Only publish stable when the user explicitly approves that specific promotion. F
 6. Publish to both channels with `powershell -NoProfile -ExecutionPolicy Bypass -File clips-worker/scripts/publish.ps1 -Channel both`, so nightly users also receive the stable baseline.
 7. Verify both nightly metadata URLs, both `/stable` metadata URLs, and every referenced artifact.
 
-Never finish an application-change task with only source edits unless the user explicitly says not to rebuild or not to publish.
+Subject to the worktree release gate above, never finish an application-change task in the primary `main` worktree with only source edits unless the user explicitly says not to rebuild or not to publish.
 
 ## Backward compatibility for released clients
 
