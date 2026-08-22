@@ -1269,10 +1269,12 @@ function createOverlayWindow() {
   toastRecoveryTimer = null;
   const overlayWindow = new BrowserWindow({
     show: false,
-    width: 420,
+    // The extra transparent margin gives the landing shockwave room to travel
+    // sideways without growing into a large screen-covering overlay.
+    width: 600,
     // Multi-line health and error details need more room than the original
     // one-line recording toast. The window is transparent and click-through.
-    height: 220,
+    height: 260,
     frame: false,
     transparent: true,
     resizable: false,
