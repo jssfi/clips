@@ -1193,7 +1193,7 @@ async function saveClip() {
     if (savedReplay && sessionGame) libraryMetadata.update(savedReplay.path, { game: sessionGame });
     lastClip = new Date().toISOString(); lastError = ''; showOverlayToast('Clip saved', 'clip-saved');
   } catch (e) { setError(e); }
-  broadcast();
+  return broadcast();
 }
 
 let lastGameDisplayId = null;
@@ -1553,8 +1553,7 @@ async function mixRecordingAction(filePath, adjustments, replace) {
     throw new Error('Stop the active recording before saving audio changes to it. You can still save a new clip.');
   }
   const outputPath = await mixRecordingAudio(target, adjustments, !!replace);
-  await broadcast();
-  return { outputPath, state: await state() };
+  return { outputPath, state: await broadcast() };
 }
 
 async function chooseFolder() {
@@ -1572,7 +1571,7 @@ async function gatewayInvoke(method, args) {
     connect: reconnectCapture,
     saveSettings: () => saveSettings(args[0], { openWebOnDisable: false }),
     toggleRecording,
-    saveClip: async () => { await saveClip(); return state(); },
+    saveClip,
     openFolder: () => shell.openPath(todayFolder()),
     openLibraryFolder: () => { ensureDirectory(settings.recordingsFolder); return shell.openPath(settings.recordingsFolder); },
     openRecording: () => openRecording(args[0]),
@@ -1701,7 +1700,7 @@ ipcMain.handle('hotkey:capture-cancel', () => {
 ipcMain.handle('capture:connect', reconnectCapture);
 ipcMain.handle('settings:save', (_event, next) => saveSettings(next));
 ipcMain.handle('recording:toggle', toggleRecording);
-ipcMain.handle('clip:save', async () => { await saveClip(); return state(); });
+ipcMain.handle('clip:save', saveClip);
 ipcMain.handle('folder:open', () => shell.openPath(todayFolder()));
 ipcMain.handle('folder:open-root', () => { ensureDirectory(settings.recordingsFolder); return shell.openPath(settings.recordingsFolder); });
 ipcMain.handle('recording:open', (_event, filePath) => openRecording(filePath));

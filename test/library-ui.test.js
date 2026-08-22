@@ -49,10 +49,20 @@ test('unchanged recording collections do not rebuild the library DOM', () => {
   assert.match(renderer, /libraryJson !== renderedLibraryJson/);
   assert.match(renderer, /render\(state, false, true\)/);
   assert.match(renderer, /renderedLibraryJson = libraryJson/);
+  assert.match(renderer, /recording\.path, recording\.name, recording\.title/);
+  assert.match(renderer, /recentDetailElements\.get\(recording\.path\)/);
+  assert.doesNotMatch(renderer, /JSON\.stringify\(\[s\.recordings \|\| \[\], s\.archivedRecordings/);
 });
 
 test('recording mutations reuse the state snapshot they broadcast', () => {
   assert.match(main, /async function broadcast\(currentState = null\)/);
   assert.match(main, /async function setRecordingFavorite[\s\S]*?return broadcast\(\);/);
   assert.match(main, /async function deleteRecordings[\s\S]*?return broadcast\(\);/);
+  assert.match(main, /async function saveClip[\s\S]*?return broadcast\(\);/);
+  assert.match(main, /async function mixRecordingAction[\s\S]*?state: await broadcast\(\)/);
+  assert.match(main, /ipcMain\.handle\('clip:save', saveClip\)/);
+});
+
+test('stitching clears cached selection state with a forced library refresh', () => {
+  assert.match(renderer, /selectedRecordingPaths\.clear\(\); render\(result\.state, false, true\);/);
 });
