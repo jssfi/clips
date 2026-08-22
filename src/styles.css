@@ -73,6 +73,7 @@ svg {
   width: 100%;
   height: 100%;
 }
+body.settings-open { --sidebar-width: clamp(176px, 16vw, 196px); }
 .sidebar {
   position: relative;
   display: flex;
@@ -158,6 +159,18 @@ svg {
   color: var(--foreground);
 }
 .nav-item.active svg, .settings-nav-item.active svg { opacity: 1; }
+body.settings-open .sidebar-header { justify-content: flex-start; padding-inline: 14px; }
+body.settings-open .settings-nav-item,
+body.settings-open #settings-back {
+  justify-content: flex-start;
+  gap: 10px;
+  padding-inline: 11px;
+}
+body.settings-open .settings-nav-item { height: 36px; }
+body.settings-open .settings-nav-item span,
+body.settings-open #settings-back span { display: inline; }
+body.settings-open .settings-nav-item svg,
+body.settings-open #settings-back svg { flex: 0 0 auto; }
 .sidebar-section { display: none; }
 .sidebar-label {
   display: flex;
@@ -594,6 +607,44 @@ kbd {
   border-radius: 9px;
   background: rgba(255,255,255,.015);
 }
+.settings-disclosure { color: inherit; }
+.settings-disclosure > summary {
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 13px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.settings-disclosure > summary::-webkit-details-marker { display: none; }
+.settings-disclosure > summary > span { display: grid; min-width: 0; gap: 2px; }
+.settings-disclosure > summary strong { color: #d7d7da; font-size: 12px; font-weight: 570; }
+.settings-disclosure > summary small { color: var(--faint); font-size: 11px; font-weight: 400; }
+.settings-disclosure > summary > svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--muted); transition: transform 140ms ease; }
+.settings-disclosure[open] > summary > svg { transform: rotate(90deg); }
+.settings-disclosure > summary:hover { background: var(--hover); }
+.settings-disclosure-body { border-top: 1px solid var(--border); }
+.settings-disclosure-body > .settings-row:last-child { border-bottom: 0; }
+.settings-block > .settings-disclosure { border-bottom: 1px solid var(--border); }
+.settings-block > .settings-disclosure:last-child { border-bottom: 0; }
+.standalone-disclosure {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(255,255,255,.015);
+}
+.settings-disclosure-body.game-list { padding: 12px 16px 16px; }
+.storage-summary-card {
+  margin-bottom: 10px;
+  padding: 16px;
+  border: 1px solid rgba(88,101,242,.24);
+  border-radius: 9px;
+  background: linear-gradient(135deg, rgba(88,101,242,.12), rgba(255,255,255,.012));
+}
+.storage-summary-card strong { color: #e1e1e4; font-size: 13px; font-weight: 590; }
+.storage-summary-card p { margin: 4px 0 0; color: #99999f; font-size: 11px; line-height: 1.5; }
 .settings-row {
   display: flex;
   min-height: 68px;
@@ -635,8 +686,6 @@ kbd {
 .about-privacy-card strong { color: #e1e1e4; font-size: 13px; font-weight: 590; }
 .about-privacy-card p { margin: 4px 0 0; color: #99999f; font-size: 11px; line-height: 1.5; }
 .changelog {
-  max-height: 310px;
-  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: rgba(255,255,255,.015);
@@ -1028,6 +1077,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); }
 
 @media (max-width: 760px) {
+  body.settings-open { --sidebar-width: clamp(56px, 8vw, 68px); }
+  body.settings-open .sidebar-header { justify-content: center; padding-inline: 0; }
+  body.settings-open .settings-nav-item,
+  body.settings-open #settings-back { justify-content: center; gap: 0; padding-inline: 0; }
+  body.settings-open .settings-nav-item span,
+  body.settings-open #settings-back span { display: none; }
   .nav-item svg, .settings-nav-item svg { width: 17px; height: 17px; }
   .page-container, .settings-group { padding: 32px 22px 54px; }
   .settings-row { align-items: flex-start; flex-direction: column; gap: 10px; }
@@ -1045,5 +1100,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .library-tools input { flex:1; }
 .library-tools input, .library-tools select { min-height:38px; border:1px solid var(--border); border-radius:8px; background:#080808; color:#e4e4e7; padding:0 12px; color-scheme:dark; }
 .library-tools select option { background:#18181b; color:#f4f4f5; }
-.profile-controls { display:grid; grid-template-columns:repeat(2,minmax(110px,1fr)); gap:8px; width:min(520px,60%); }
-.profile-controls select,.profile-controls input { min-width:0; }
+.profile-controls { display:grid; grid-template-columns:repeat(2,minmax(110px,1fr)); gap:12px; padding:16px; border-top:1px solid var(--border); }
+.profile-controls label { display:grid; gap:5px; color:var(--faint); font-size:10px; }
+.profile-controls select,.profile-controls input { width:100%; min-width:0; }
