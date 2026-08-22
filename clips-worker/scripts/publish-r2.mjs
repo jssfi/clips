@@ -3,10 +3,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {
   AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CopyObjectCommand,
-  CreateMultipartUploadCommand, DeleteObjectCommand, GetObjectCommand, HeadObjectCommand,
-  PutObjectCommand, S3Client, UploadPartCommand
+  CreateMultipartUploadCommand, DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand,
+  HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, UploadPartCommand
 } from '@aws-sdk/client-s3';
-import { limiter, publishMetadataPair } from './release-utils.mjs';
+import { artifactVersion, limiter, publishMetadataPair, releaseRetentionPlan } from './release-utils.mjs';
 
 const [dist, bucket, channel, version, mode = 'publish'] = process.argv.slice(2);
 for (const name of ['CLIPS_R2_ACCOUNT_ID', 'CLIPS_R2_ACCESS_KEY_ID', 'CLIPS_R2_SECRET_ACCESS_KEY']) {
@@ -27,6 +27,7 @@ const types = { '.exe': 'application/octet-stream', '.blockmap': 'application/oc
 
 const network = limiter(Number(process.env.CLIPS_R2_UPLOAD_CONCURRENCY || 16));
 const partSize = Number(process.env.CLIPS_R2_PART_SIZE || 16 * 1024 * 1024);
+const retainedVersionCount = 3;
 
 async function sha512File(source) {
   const hash = crypto.createHash('sha512');
@@ -85,9 +86,81 @@ async function upload(source, key, contentType) {
   console.log(`Uploaded and verified ${key} (${size} bytes)`);
 }
 
+async function listObjects(prefix) {
+  const objects = [];
+  let continuationToken;
+  do {
+    const page = await client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      Delimiter: '/',
+      ContinuationToken: continuationToken
+    }));
+    objects.push(...(page.Contents || []));
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    if (page.IsTruncated && !continuationToken) throw new Error(`R2 did not return a continuation token for ${prefix}.`);
+  } while (continuationToken);
+  return objects;
+}
+
+function githubReleaseTag(version) {
+  return version.replace(/-nightly\.(\d+)(?=\.|$)/, (_match, sequence) =>
+    `-nightly.n${sequence.padStart(6, '0')}`);
+}
+
+async function verifyGithubFallback(object) {
+  const name = object.Key.split('/').at(-1);
+  const version = artifactVersion(name);
+  const repository = process.env.CLIPS_GITHUB_REPOSITORY || 'jssfi/clips';
+  const url = version
+    ? `https://github.com/${repository}/releases/download/v${githubReleaseTag(version)}/${encodeURIComponent(name)}`
+    : null;
+  if (!url || !Number.isSafeInteger(Number(object.Size))) throw new Error(`Cannot verify GitHub fallback for ${object.Key}.`);
+
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: 'HEAD',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(120_000)
+      });
+      const size = Number(response.headers.get('content-length'));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (size !== Number(object.Size)) throw new Error(`size ${size} != ${object.Size}`);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+    }
+  }
+  throw new Error(`GitHub fallback verification failed for ${name}: ${lastError?.message || lastError}`);
+}
+
+async function pruneChannel(releaseChannel) {
+  const prefix = prefixFor(releaseChannel);
+  const plan = releaseRetentionPlan(await listObjects(prefix), retainedVersionCount);
+  if (!plan.deleteObjects.length) {
+    console.log(`Retained ${plan.retainedVersions.length} R2 version(s) for ${releaseChannel}; nothing to prune.`);
+    return;
+  }
+
+  await Promise.all(plan.deleteObjects.map(object => network(() => verifyGithubFallback(object))));
+  for (let index = 0; index < plan.deleteObjects.length; index += 1000) {
+    const batch = plan.deleteObjects.slice(index, index + 1000);
+    const result = await client.send(new DeleteObjectsCommand({
+      Bucket: bucket,
+      Delete: { Objects: batch.map(object => ({ Key: object.Key })), Quiet: true }
+    }));
+    if (result.Errors?.length) {
+      throw new Error(`R2 failed to delete: ${result.Errors.map(error => `${error.Key}: ${error.Message}`).join(', ')}`);
+    }
+  }
+  console.log(`Retained ${plan.retainedVersions.join(', ')} in R2 for ${releaseChannel}; pruned ${plan.deletedVersions.join(', ')} after verifying GitHub fallbacks.`);
+}
+
 if (mode === 'cleanup') {
-  await Promise.all(channels.flatMap(releaseChannel => artifactNames.map(name => client.send(new DeleteObjectCommand({ Bucket: bucket, Key: `${prefixFor(releaseChannel)}${name}` })) )));
-  console.log(`Removed temporary R2 artifacts for ${version}; GitHub is now the fallback.`);
+  for (const releaseChannel of channels) await pruneChannel(releaseChannel);
 } else {
   const primary = channels[0];
   const primaryPrefix = prefixFor(primary);
