@@ -1041,11 +1041,12 @@ async function openWebUi() {
 function openPreferredUi() {
   return settings?.desktopWindow === false ? openWebUi() : showMainWindow();
 }
-async function broadcast() {
-  const currentState = await state();
+async function broadcast(currentState = null) {
+  currentState ||= await state();
   trayController.update(currentState.obs.recording);
   if (win && !win.isDestroyed()) win.webContents.send('state', currentState);
   gateway?.emit('state', currentState);
+  return currentState;
 }
 function setUpdateState(next) {
   updateState = { ...updateState, ...next, ...(next.version ? { version: displayVersion(next.version) } : {}) };
@@ -1482,15 +1483,13 @@ function openRecording(filePath) {
 async function setRecordingFavorite(filePath, favorite) {
   const target = validateRecordingPath(filePath);
   recordingLibrary.setFavorite(target, favorite);
-  await broadcast();
-  return state();
+  return broadcast();
 }
 
 async function updateRecordingMetadata(filePath, change) {
   const target = validateRecordingPath(filePath);
   libraryMetadata.update(target, change || {});
-  await broadcast();
-  return state();
+  return broadcast();
 }
 
 async function stitchRecordings(filePaths) {
@@ -1505,8 +1504,7 @@ async function stitchRecordings(filePaths) {
   finally { fs.rmSync(manifest, { force: true }); }
   const games = [...new Set(targets.map(target => libraryMetadata.get(target).game).filter(Boolean))];
   libraryMetadata.update(outputPath, { title: 'Compilation', tags: ['compilation'], game: games.length === 1 ? games[0] : '' });
-  await broadcast();
-  return { outputPath, state: await state() };
+  return { outputPath, state: await broadcast() };
 }
 
 async function deleteRecordings(filePaths) {
@@ -1523,8 +1521,7 @@ async function deleteRecordings(filePaths) {
     recordingMediaServer.invalidate(target);
   }
   recordingLibrary.persistFavorites();
-  await broadcast();
-  return state();
+  return broadcast();
 }
 
 async function listMicrophones() {
