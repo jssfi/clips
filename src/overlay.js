@@ -51,13 +51,6 @@ function startImpact() {
 
   const pixelRatio = prepareImpactCanvas();
   const canvasRect = impactCanvas.getBoundingClientRect();
-  const toastRect = toast.getBoundingClientRect();
-  const rect = {
-    left: toastRect.left - canvasRect.left,
-    top: toastRect.top - canvasRect.top,
-    width: toastRect.width,
-    height: toastRect.height
-  };
   const kind = toast.dataset.kind;
   const color = impactColors[kind] || [210, 216, 226];
   const reverse = kind === 'recording-stopped';
@@ -77,6 +70,13 @@ function startImpact() {
     const fade = Math.pow(1 - elapsed, 0.72);
     const colorShift = reverse ? Math.min(Math.max((elapsed - 0.34) / 0.3, 0), 1) : 1;
     const frameColor = startingColor.map((channel, index) => Math.round(channel + (color[index] - channel) * colorShift));
+    const toastRect = toast.getBoundingClientRect();
+    const rect = {
+      left: toastRect.left - canvasRect.left,
+      top: toastRect.top - canvasRect.top,
+      width: toastRect.width,
+      height: toastRect.height
+    };
 
     impactContext.clearRect(0, 0, impactCanvas.width / pixelRatio, impactCanvas.height / pixelRatio);
     impactContext.globalCompositeOperation = 'lighter';
@@ -122,12 +122,11 @@ function showToast(next) {
   detail.textContent = next.detail || '';
   detail.hidden = !next.detail;
   toast.dataset.kind = next.kind;
-  requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('visible')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    toast.classList.add('visible');
+    startImpact();
+  }));
 }
-
-toast.addEventListener('transitionend', event => {
-  if (event.target === toast && event.propertyName === 'transform' && toast.classList.contains('visible')) startImpact();
-});
 
 motionPreference.addEventListener('change', () => {
   if (motionPreference.matches) clearImpact();

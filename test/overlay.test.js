@@ -25,11 +25,13 @@ test('the overlay landing effect is canvas-based, directional, and motion-aware'
   const styles = fs.readFileSync(path.join(__dirname, '..', 'src', 'overlay.css'), 'utf8');
 
   assert.match(html, /<canvas id="impact"/);
-  assert.match(script, /event\.propertyName === 'transform'/);
+  assert.match(script, /toast\.classList\.add\('visible'\);\s*startImpact\(\);/);
+  assert.match(script, /function render\(now\)[\s\S]*const toastRect = toast\.getBoundingClientRect\(\);/);
   assert.match(script, /if \(y < rect\.top\) continue;/);
   assert.match(script, /kind === 'recording-stopped'/);
   assert.match(script, /reverse \? 1 - eased : eased/);
   assert.match(script, /prefers-reduced-motion: reduce/);
+  assert.match(styles, /transform 420ms cubic-bezier/);
   assert.match(styles, /\.impact\s*\{[\s\S]*pointer-events:\s*none;/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.impact\s*\{\s*display:\s*none;/);
 });

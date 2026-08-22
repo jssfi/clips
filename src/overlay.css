@@ -47,7 +47,7 @@ body {
   letter-spacing: .01em;
   opacity: 0;
   transform: translateY(-130px) scale(.98);
-  transition: opacity 180ms ease, transform 300ms cubic-bezier(.2, .8, .2, 1);
+  transition: opacity 180ms ease, transform 420ms cubic-bezier(.2, .8, .2, 1);
 }
 .toast.visible {
   opacity: 1;
