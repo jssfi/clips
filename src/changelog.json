@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.6-nightly.9",
     "title": "Faster recent update downloads",
     "changes": [
       "The three newest releases now remain on the update CDN for fast downloads, while older release links continue through the permanent GitHub archive."
