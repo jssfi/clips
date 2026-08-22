@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Smoother large libraries",
+    "changes": [
+      "Routine recorder updates no longer rebuild an unchanged clip library, keeping controls responsive as the collection grows."
+    ]
+  },
+  {
     "version": "0.6-nightly.9",
     "title": "Faster recent update downloads",
     "changes": [

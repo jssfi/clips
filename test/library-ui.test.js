@@ -6,6 +6,7 @@ const path = require('path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'styles.css'), 'utf8');
 const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer.js'), 'utf8');
+const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
 
 test('library organization controls live in Library, not Recent', () => {
   const recent = html.slice(html.indexOf('<section id="recent"'), html.indexOf('<section id="library"'));
@@ -42,4 +43,16 @@ test('non-chronological library sorts stop grouping recordings by day', () => {
   assert.match(renderer, /librarySort === "game" \? \(recording\.game \|\| "Older recordings \(game unknown\)"\)/);
   assert.match(renderer, /: "Largest files"/);
   assert.match(renderer, /!chronological \|\| !archivedFavorites\.length/);
+});
+
+test('unchanged recording collections do not rebuild the library DOM', () => {
+  assert.match(renderer, /libraryJson !== renderedLibraryJson/);
+  assert.match(renderer, /render\(state, false, true\)/);
+  assert.match(renderer, /renderedLibraryJson = libraryJson/);
+});
+
+test('recording mutations reuse the state snapshot they broadcast', () => {
+  assert.match(main, /async function broadcast\(currentState = null\)/);
+  assert.match(main, /async function setRecordingFavorite[\s\S]*?return broadcast\(\);/);
+  assert.match(main, /async function deleteRecordings[\s\S]*?return broadcast\(\);/);
 });

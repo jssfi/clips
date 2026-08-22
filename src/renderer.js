@@ -15,6 +15,11 @@ let liveMixTimer = null;
 let libraryQuery = "";
 let librarySort = "newest";
 let renderedSettingsJson = "";
+let renderedLibraryJson = "";
+const shortTimeFormatter = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const archiveDateFormatter = new Intl.DateTimeFormat(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+const megabyteFormatter = new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 });
+const gigabyteFormatter = new Intl.NumberFormat(undefined, { style: "unit", unit: "gigabyte", maximumFractionDigits: 1 });
 const playerIcons = {
   play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
@@ -160,7 +165,7 @@ function renderEncoders(encoders, selectedId, activeId) {
   for (const encoder of available) select.add(new Option(encoder.name, encoder.id));
   select.value = available.some(encoder => encoder.id === selectedId) ? selectedId : "auto";
 }
-function render(s, fill = false) {
+function render(s, fill = false, refreshLibrary = false) {
   state = s;
   renderEncoders(s.availableEncoders, s.settings.obsEncoder, s.selectedEncoder);
   const updateReady = s.update?.status === "ready";
@@ -225,7 +230,9 @@ function render(s, fill = false) {
       : `${s.lastError} Reconnect the capture engine or restart Clips.`
     : "";
   $("error").classList.toggle("hidden", !s.lastError);
-  const formatBytes = bytes => new Intl.NumberFormat(undefined, { style: "unit", unit: bytes >= 1073741824 ? "gigabyte" : "megabyte", maximumFractionDigits: 1 }).format(bytes / (bytes >= 1073741824 ? 1073741824 : 1048576));
+  const formatBytes = bytes => bytes >= 1073741824
+    ? gigabyteFormatter.format(bytes / 1073741824)
+    : megabyteFormatter.format(bytes / 1048576);
   const unknownStorage = s.storage?.byGame?.some(item => item.game === "Older recordings (game unknown)");
   $("storage-insights-summary").textContent = `${formatBytes(s.storage?.totalBytes || 0)} in Clips · ${formatBytes(s.storage?.driveFreeBytes || 0)} free on the drive.${unknownStorage ? " Footage saved before game tracking is grouped as unknown." : ""}`;
   $("storage-by-game").innerHTML = s.storage?.byGame?.length ? s.storage.byGame.map(item => `<div class="settings-row"><span><strong>${escapeHtml(item.game)}</strong><small>${formatBytes(item.bytes)}</small></span><meter min="0" max="${s.storage.totalBytes || 1}" value="${item.bytes}"></meter></div>`).join("") : '<div class="settings-row"><span class="muted">No recordings to measure yet.</span></div>';
@@ -253,6 +260,8 @@ function render(s, fill = false) {
         )
         .join("")
     : '<div class="muted">No extra applications added. The active game audio is still recorded.</div>';
+  const libraryJson = JSON.stringify([s.recordings || [], s.archivedRecordings || []]);
+  if (refreshLibrary || libraryJson !== renderedLibraryJson) {
   const organize = (items) => {
     const query = libraryQuery.toLowerCase();
     const filtered = query ? items.filter(item => [item.title, item.name, item.game, ...(item.tags || [])].join(" ").toLowerCase().includes(query)) : [...items];
@@ -272,10 +281,8 @@ function render(s, fill = false) {
     : "Recordings from this session.";
   const renderFiles = (items, emptyTitle, emptyDetail) => items.length
     ? items.map((recording) => {
-        const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(recording.modified));
-        const size = recording.bytes >= 1073741824
-          ? new Intl.NumberFormat(undefined, { style: "unit", unit: "gigabyte", maximumFractionDigits: 1 }).format(recording.bytes / 1073741824)
-          : new Intl.NumberFormat(undefined, { style: "unit", unit: "megabyte", maximumFractionDigits: 1 }).format(recording.bytes / 1048576);
+        const time = shortTimeFormatter.format(new Date(recording.modified));
+        const size = formatBytes(recording.bytes);
         const favoriteLabel = recording.favorite ? "Remove from favorites" : "Add to favorites";
         const selected = selectedRecordingPaths.has(recording.path);
         const markers = recording.markers?.length ? ` &middot; ${recording.markers.length} marker${recording.markers.length === 1 ? "" : "s"}` : "";
@@ -311,13 +318,15 @@ function render(s, fill = false) {
   $("archive-days").innerHTML = archived.length
     ? Object.entries(groupedItems).map(([group, items]) => {
         const heading = chronological
-          ? new Intl.DateTimeFormat(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(`${group}T12:00:00`))
+          ? archiveDateFormatter.format(new Date(`${group}T12:00:00`))
           : group;
         return `<section class="archive-day"><div class="group-title"><h3>${escapeHtml(heading)}</h3><span>${items.length}</span></div><div class="recording-list">${renderFiles(items, "", "")}</div></section>`;
       }).join("")
     : '<div class="empty archive-empty"><div><strong>No previous days yet</strong><span>Older recordings will appear here, grouped by day.</span></div></div>';
   loadRecordingThumbnails();
   updateSelectionBar();
+  renderedLibraryJson = libraryJson;
+  }
   $("footer-status").textContent = s.autoRecordSuppressed
     ? "Stopped until the game closes"
     : s.lastClip
@@ -751,8 +760,8 @@ $("record").onclick = async () => render(await window.clips.toggleRecording());
 $("clip").onclick = async () => render(await window.clips.saveClip());
 $("library-folder").onclick = () => window.clips.openFolder();
 $("archive-folder").onclick = () => window.clips.openLibraryFolder();
-$("library-search").oninput = event => { libraryQuery = event.currentTarget.value.trim(); render(state); };
-$("library-sort").onchange = event => { librarySort = event.currentTarget.value; render(state); };
+$("library-search").oninput = event => { libraryQuery = event.currentTarget.value.trim(); render(state, false, true); };
+$("library-sort").onchange = event => { librarySort = event.currentTarget.value; render(state, false, true); };
 document.addEventListener("dblclick", async event => {
   const title = event.target.closest(".recording-meta strong");
   const card = title?.closest(".recording-card");
