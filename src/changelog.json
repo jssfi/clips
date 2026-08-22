@@ -1,5 +1,12 @@
 [
   {
+    "version": "next",
+    "title": "Faster recent update downloads",
+    "changes": [
+      "The three newest releases now remain on the update CDN for fast downloads, while older release links continue through the permanent GitHub archive."
+    ]
+  },
+  {
     "version": "0.6-nightly.8",
     "title": "Overlay waves arrive with the notification",
     "changes": [
