@@ -1,9 +1,10 @@
 [
   {
     "version": "next",
-    "title": "Smoother large libraries",
+    "title": "Smoother libraries and updates",
     "changes": [
-      "Routine recorder updates no longer rebuild an unchanged clip library, keeping controls responsive as the collection grows."
+      "Routine recorder updates no longer rebuild an unchanged clip library, keeping controls responsive as the collection grows.",
+      "Update downloads now retry individual parallel connections instead of silently restarting in slower single-stream mode, with clearer diagnostics when a server does not support parallel downloads."
     ]
   },
   {
