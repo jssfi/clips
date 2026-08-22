@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.6-nightly.8",
     "title": "Overlay waves arrive with the notification",
     "changes": [
       "Overlay halftone waves now begin while each notification slides in, follow the moving card, and finish after it settles."
