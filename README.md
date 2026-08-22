@@ -2,11 +2,9 @@
 
 Clips is a Windows app with a built-in capture engine built on top of libobs. The app detects chosen executables and starts recording automatically.
 
-Download the latest stable version at: https://clips.jss.fi/download/
+Download the latest stable version at: https://clips.jss.fi/download/ (or from the releases page below)
 
 Browse all stable and nightly releases at: https://github.com/jssfi/clips/releases
-
-Why and how I built this are documented on Hack Club: https://stardance.hackclub.com/projects/45261
 
 ![Clips recording library](docs/screenshots/library.png)
 
