@@ -187,7 +187,7 @@
             <section class="settings-section">
               <div class="settings-section-title"><h2>Save clip</h2></div>
               <div class="settings-block">
-                <label class="settings-row" for="hotkey"><span><strong>Clip shortcut</strong><small>Click the field, press your shortcut, then release every key to save it.</small></span><span class="shortcut-control"><span class="shortcut-input-row"><input id="hotkey" class="shortcut-capture" name="clipHotkey" readonly autocomplete="off" spellcheck="false"><button id="disable-hotkey" class="button ghost shortcut-disable" type="button">Disable</button></span><em id="shortcut-feedback">Click to remap</em></span></label>
+                <label class="settings-row" for="hotkey"><span><strong>Clip shortcut</strong><small>Click the field, press your shortcut, then release every key to save it.</small></span><span class="shortcut-control"><span class="shortcut-input-row"><input id="hotkey" class="shortcut-capture" name="clipHotkey" readonly autocomplete="off" spellcheck="false"><button id="disable-hotkey" class="button ghost shortcut-disable" type="button" aria-label="Disable clip shortcut" title="Disable shortcut">&times;</button></span><em id="shortcut-feedback">Click to remap</em></span></label>
                 <label class="settings-row" for="clip-length"><span><strong>Clip length</strong><small>How many seconds of the replay buffer to save.</small></span><span class="control-with-unit"><input id="clip-length" name="clipLengthSeconds" type="number" min="5" max="3600" inputmode="numeric"><em>sec</em></span></label>
                 <label class="settings-row" for="instant-replay"><span><strong>Instant replay while idle</strong><small>When full recording is off, keep a separate rolling window so the same Save clip button and shortcut can recover a recent moment. Off by default.</small></span><input id="instant-replay" name="instantReplay" type="checkbox" role="switch"></label>
                 <label id="instant-replay-length-row" class="settings-row" for="instant-replay-length"><span><strong>Idle replay length</strong><small>How much history the idle instant replay keeps. This does not change normal recording clips.</small></span><span class="control-with-unit"><input id="instant-replay-length" name="instantReplayLengthSeconds" type="number" min="5" max="3600" inputmode="numeric"><em>sec</em></span></label>
@@ -196,7 +196,7 @@
             <section class="settings-section">
               <div class="settings-section-title"><h2>Timeline markers</h2><p>Mark moments in a full recording without saving another file.</p></div>
               <div class="settings-block">
-                <label class="settings-row" for="marker-hotkey"><span><strong>Marker shortcut</strong><small>Add a moment to the current recording timeline without saving another file.</small></span><span class="shortcut-control"><span class="shortcut-input-row"><input id="marker-hotkey" class="shortcut-capture" name="markerHotkey" readonly autocomplete="off" spellcheck="false"><button id="disable-marker-hotkey" class="button ghost shortcut-disable" type="button">Disable</button></span><em id="marker-shortcut-feedback">Click to remap</em></span></label>
+                <label class="settings-row" for="marker-hotkey"><span><strong>Marker shortcut</strong><small>Add a moment to the current recording timeline without saving another file.</small></span><span class="shortcut-control"><span class="shortcut-input-row"><input id="marker-hotkey" class="shortcut-capture" name="markerHotkey" readonly autocomplete="off" spellcheck="false"><button id="disable-marker-hotkey" class="button ghost shortcut-disable" type="button" aria-label="Disable marker shortcut" title="Disable shortcut">&times;</button></span><em id="marker-shortcut-feedback">Click to remap</em></span></label>
               </div>
             </section>
           </div>
@@ -319,7 +319,9 @@
             </section>
             <section class="settings-section">
               <div class="settings-section-title"><h2>Latest release</h2></div>
-              <div id="changelog" class="changelog" aria-label="Release history"></div>
+              <div id="changelog" class="changelog" aria-label="Latest release"></div>
+              <button id="release-history-toggle" class="button outline release-history-toggle hidden" type="button" aria-expanded="false" aria-controls="release-history">View release history</button>
+              <div id="release-history" class="changelog release-history hidden" aria-label="Earlier releases"></div>
             </section>
           </div>
         </div>

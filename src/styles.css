@@ -15,7 +15,8 @@
   --primary-hover: #6874f4;
   --danger: #ef5b5b;
   --success: #4fb477;
-  --sidebar-width: clamp(56px, 5.2vw, 68px);
+  --compact-sidebar-width: clamp(56px, 5.2vw, 68px);
+  --sidebar-width: var(--compact-sidebar-width);
   --topbar-height: clamp(48px, 5.4vh, 58px);
   --radius: 8px;
 }
@@ -159,7 +160,8 @@ body.settings-open { --sidebar-width: clamp(176px, 16vw, 196px); }
   color: var(--foreground);
 }
 .nav-item.active svg, .settings-nav-item.active svg { opacity: 1; }
-body.settings-open .sidebar-header { justify-content: flex-start; padding-inline: 14px; }
+body.settings-open .sidebar-header { justify-content: flex-start; padding: 0; }
+body.settings-open .brand { margin-left: calc((var(--compact-sidebar-width) - 33px) / 2); }
 body.settings-open .settings-nav-item,
 body.settings-open #settings-back {
   justify-content: flex-start;
@@ -697,6 +699,8 @@ kbd {
 .changelog-heading span { color: #bdbdc2; font-size: 12px; font-weight: 560; }
 .changelog-heading .changelog-tag { padding: 2px 6px; border: 1px solid rgba(102,187,145,.3); border-radius: 999px; background: rgba(79,174,124,.12); color: #78d5a2; font-size: 9px; font-weight: 650; letter-spacing: .04em; line-height: 1.2; text-transform: uppercase; }
 .changelog-release ul { margin: 9px 0 0; padding-left: 18px; color: var(--faint); font-size: 11px; line-height: 1.55; }
+.release-history-toggle { margin-top: 10px; }
+.release-history { max-height: 310px; margin-top: 10px; overflow-y: auto; }
 .settings-row-stack { display: grid; align-items: stretch; gap: 12px; }
 .row-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .row-actions, .path-control, .control-with-unit { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; }
@@ -777,9 +781,27 @@ input:focus, select:focus, textarea:focus {
   justify-items: end;
   gap: 3px;
 }
-.shortcut-input-row { display: flex; align-items: center; gap: 7px; }
-.shortcut-input-row .shortcut-capture { width: 175px; }
-.shortcut-input-row .shortcut-disable { min-height: 31px; padding-inline: 8px; font-size: 10px; }
+.shortcut-input-row { position: relative; display: flex; align-items: center; }
+.shortcut-input-row .shortcut-capture { width: 210px; padding-right: 34px; }
+.shortcut-input-row .shortcut-disable {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  opacity: 0;
+  pointer-events: none;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;
+}
+.shortcut-input-row:hover .shortcut-disable,
+.shortcut-input-row:focus-within .shortcut-disable { opacity: 1; pointer-events: auto; }
+.shortcut-input-row .shortcut-disable:hover { background: rgba(239,91,91,.14); color: #ff8585; }
 .shortcut-control em {
   color: var(--faint);
   font-size: 10px;
@@ -1077,8 +1099,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); }
 
 @media (max-width: 760px) {
-  body.settings-open { --sidebar-width: clamp(56px, 8vw, 68px); }
+  body.settings-open { --compact-sidebar-width: clamp(56px, 8vw, 68px); --sidebar-width: var(--compact-sidebar-width); }
   body.settings-open .sidebar-header { justify-content: center; padding-inline: 0; }
+  body.settings-open .brand { margin-left: 0; }
   body.settings-open .settings-nav-item,
   body.settings-open #settings-back { justify-content: center; gap: 0; padding-inline: 0; }
   body.settings-open .settings-nav-item span,

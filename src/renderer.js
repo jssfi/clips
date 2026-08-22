@@ -363,37 +363,48 @@ function render(s, fill = false) {
 }
 
 const isNightlyRelease = release => /(?:^|-)nightly(?:\.|$)/i.test(String(release?.version || ""));
+function createChangelogRelease(release, nightlyUpdates) {
+  const article = document.createElement("article");
+  article.className = "changelog-release";
+  const heading = document.createElement("div");
+  heading.className = "changelog-heading";
+  const version = document.createElement("strong");
+  version.textContent = `v${release.version}`;
+  const title = document.createElement("span");
+  title.textContent = release.title;
+  heading.append(version, title);
+  if (nightlyUpdates && !isNightlyRelease(release)) {
+    const recap = document.createElement("span");
+    recap.className = "changelog-tag";
+    recap.textContent = "Recap";
+    heading.append(recap);
+  }
+  const list = document.createElement("ul");
+  for (const change of release.changes || []) {
+    const item = document.createElement("li");
+    item.textContent = change;
+    list.append(item);
+  }
+  article.append(heading, list);
+  return article;
+}
 function renderChangelog(releases, nightlyUpdates) {
-  const container = $("changelog");
-  const visibleReleases = (nightlyUpdates ? releases : releases.filter(release => !isNightlyRelease(release))).slice(0, 1);
+  const latestContainer = $("changelog");
+  const historyContainer = $("release-history");
+  const historyToggle = $("release-history-toggle");
+  const visibleReleases = nightlyUpdates ? releases : releases.filter(release => !isNightlyRelease(release));
   const renderKey = JSON.stringify({ releases: visibleReleases, nightlyUpdates });
-  if (container.dataset.rendered === renderKey) return;
-  container.dataset.rendered = renderKey;
-  container.replaceChildren(...visibleReleases.map(release => {
-    const article = document.createElement("article");
-    article.className = "changelog-release";
-    const heading = document.createElement("div");
-    heading.className = "changelog-heading";
-    const version = document.createElement("strong");
-    version.textContent = `v${release.version}`;
-    const title = document.createElement("span");
-    title.textContent = release.title;
-    heading.append(version, title);
-    if (nightlyUpdates && !isNightlyRelease(release)) {
-      const recap = document.createElement("span");
-      recap.className = "changelog-tag";
-      recap.textContent = "Recap";
-      heading.append(recap);
-    }
-    const list = document.createElement("ul");
-    for (const change of release.changes || []) {
-      const item = document.createElement("li");
-      item.textContent = change;
-      list.append(item);
-    }
-    article.append(heading, list);
-    return article;
-  }));
+  if (latestContainer.dataset.rendered === renderKey) return;
+  latestContainer.dataset.rendered = renderKey;
+  latestContainer.replaceChildren(...visibleReleases.slice(0, 1).map(release => createChangelogRelease(release, nightlyUpdates)));
+  historyContainer.replaceChildren(...visibleReleases.slice(1).map(release => createChangelogRelease(release, nightlyUpdates)));
+  const hasHistory = visibleReleases.length > 1;
+  historyToggle.classList.toggle("hidden", !hasHistory);
+  if (!hasHistory) {
+    historyContainer.classList.add("hidden");
+    historyToggle.setAttribute("aria-expanded", "false");
+    historyToggle.textContent = "View release history";
+  }
 }
 function loadRecordingThumbnails() {
   thumbnailObserver.disconnect();
@@ -580,8 +591,22 @@ const disableShortcut = async (input, feedback) => {
   render(await window.clips.saveSettings(values()), true);
   feedback.textContent = "Disabled";
 };
-$("disable-hotkey").onclick = () => disableShortcut($("hotkey"), $("shortcut-feedback"));
-$("disable-marker-hotkey").onclick = () => disableShortcut(markerShortcutInput, markerShortcutFeedback);
+const bindDisableShortcut = (button, input, feedback) => {
+  button.onclick = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    disableShortcut(input, feedback);
+  };
+};
+bindDisableShortcut($("disable-hotkey"), $("hotkey"), $("shortcut-feedback"));
+bindDisableShortcut($("disable-marker-hotkey"), markerShortcutInput, markerShortcutFeedback);
+$("release-history-toggle").onclick = () => {
+  const history = $("release-history");
+  const expanded = history.classList.contains("hidden");
+  history.classList.toggle("hidden", !expanded);
+  $("release-history-toggle").setAttribute("aria-expanded", String(expanded));
+  $("release-history-toggle").textContent = expanded ? "Hide release history" : "View release history";
+};
 $("game-list").onclick = async (e) => {
   if (e.target.dataset.remove != null) {
     state.settings.gameExecutables.splice(Number(e.target.dataset.remove), 1);

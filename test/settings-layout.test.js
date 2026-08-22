@@ -32,3 +32,18 @@ test('trim quality lives only in the editor and per-game controls are labeled', 
   assert.match(renderer, /aria-label="\$\{escapeHtml\(game\)\} clip length in seconds"/);
 });
 
+test('shared navigation and compact shortcut actions stay stable in settings', () => {
+  assert.match(css, /--compact-sidebar-width:/);
+  assert.match(css, /body\.settings-open \.brand \{ margin-left: calc\(\(var\(--compact-sidebar-width\) - 33px\) \/ 2\)/);
+  assert.match(html, /id="disable-hotkey"[^>]*aria-label="Disable clip shortcut"[^>]*>&times;<\/button>/);
+  assert.match(html, /id="disable-marker-hotkey"[^>]*aria-label="Disable marker shortcut"[^>]*>&times;<\/button>/);
+  assert.match(css, /\.shortcut-input-row:hover \.shortcut-disable,[\s\S]*?\.shortcut-input-row:focus-within \.shortcut-disable/);
+});
+
+test('about exposes earlier releases behind a labeled toggle', () => {
+  assert.match(html, /id="release-history-toggle"[^>]*aria-controls="release-history"[^>]*>View release history<\/button>/);
+  assert.match(html, /id="release-history" class="changelog release-history hidden"/);
+  assert.match(renderer, /visibleReleases\.slice\(0, 1\)/);
+  assert.match(renderer, /visibleReleases\.slice\(1\)/);
+  assert.match(renderer, /"Hide release history" : "View release history"/);
+});
