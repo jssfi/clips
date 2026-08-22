@@ -16,6 +16,7 @@ const VERSIONED_ARTIFACTS = [
   /^jss-clips-app-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)-x64\.zip$/,
   /^jss-clips-source-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.zip$/
 ];
+const RELEASE_MARKER = /^\.published-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.json$/;
 
 function artifactVersion(key) {
   const name = String(key || '').split('/').at(-1);
@@ -31,6 +32,15 @@ function releaseArtifactNames(version) {
   ];
   if (!version.includes('-')) names.push(`jss-clips-setup-${version}-x64.exe`);
   return names;
+}
+
+function releaseMarkerName(version) {
+  return `.published-${version}.json`;
+}
+
+function releaseMarkerVersion(key) {
+  const name = String(key || '').split('/').at(-1);
+  return RELEASE_MARKER.exec(name)?.[1] || null;
 }
 
 function parseReleaseVersion(version) {
@@ -75,7 +85,13 @@ function releaseRetentionPlan(objects, retainedVersionCount = 3) {
     throw new Error('retainedVersionCount must be a positive integer.');
   }
   const releases = new Map();
+  const markers = new Map();
   for (const object of objects) {
+    const markerVersion = releaseMarkerVersion(object.Key);
+    if (markerVersion) {
+      markers.set(markerVersion, object);
+      continue;
+    }
     const version = artifactVersion(object.Key);
     if (!version) continue;
     if (!releases.has(version)) releases.set(version, { names: new Set(), objects: [] });
@@ -84,19 +100,35 @@ function releaseRetentionPlan(objects, retainedVersionCount = 3) {
     release.objects.push(object);
   }
   const complete = [...releases.entries()].filter(([version, release]) =>
-    releaseArtifactNames(version).every(name => release.names.has(name)));
+    markers.has(version) && releaseArtifactNames(version).every(name => release.names.has(name)));
   const versions = complete.map(([version]) => version).sort((a, b) => compareReleaseVersions(b, a));
   const completeVersions = new Set(versions);
   const retainedVersions = versions.slice(0, retainedVersionCount);
   const deletedVersions = versions.slice(retainedVersionCount);
-  const incompleteVersions = [...releases.keys()]
+  const incompleteVersions = [...markers.keys()]
     .filter(version => !completeVersions.has(version))
     .sort((a, b) => compareReleaseVersions(b, a));
+  const unmarkedVersions = [...releases.keys()]
+    .filter(version => !markers.has(version))
+    .sort((a, b) => compareReleaseVersions(b, a));
+  const unmarkedCompleteVersions = unmarkedVersions.filter(version =>
+    releaseArtifactNames(version).every(name => releases.get(version).names.has(name)));
+  const unmarkedIncompleteVersions = unmarkedVersions.filter(version =>
+    !unmarkedCompleteVersions.includes(version));
   return {
     retainedVersions,
     deletedVersions,
     incompleteVersions,
-    deleteObjects: deletedVersions.flatMap(version => releases.get(version).objects)
+    unmarkedVersions,
+    unmarkedCompleteVersions,
+    unmarkedIncompleteVersions,
+    deleteObjects: deletedVersions.flatMap(version => [...releases.get(version).objects, markers.get(version)]),
+    incompleteObjects: incompleteVersions.flatMap(version => [
+      ...(releases.get(version)?.objects || []),
+      markers.get(version)
+    ]),
+    unmarkedCompleteObjects: unmarkedCompleteVersions.flatMap(version => releases.get(version).objects),
+    unmarkedIncompleteObjects: unmarkedIncompleteVersions.flatMap(version => releases.get(version).objects)
   };
 }
 
@@ -122,4 +154,7 @@ async function publishMetadataPair(names, operations) {
   }
 }
 
-export { artifactVersion, compareReleaseVersions, limiter, publishMetadataPair, releaseArtifactNames, releaseRetentionPlan };
+export {
+  artifactVersion, compareReleaseVersions, limiter, publishMetadataPair, releaseArtifactNames,
+  releaseMarkerName, releaseMarkerVersion, releaseRetentionPlan
+};

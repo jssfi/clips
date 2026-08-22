@@ -7,7 +7,8 @@ import {
   HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, UploadPartCommand
 } from '@aws-sdk/client-s3';
 import {
-  artifactVersion, limiter, publishMetadataPair, releaseArtifactNames, releaseRetentionPlan
+  artifactVersion, compareReleaseVersions, limiter, publishMetadataPair, releaseArtifactNames,
+  releaseMarkerName, releaseMarkerVersion, releaseRetentionPlan
 } from './release-utils.mjs';
 
 const [dist, bucket, channel, version, mode = 'publish'] = process.argv.slice(2);
@@ -135,20 +136,30 @@ async function verifyGithubFallback(object) {
   throw new Error(`GitHub fallback verification failed for ${name}: ${lastError?.message || lastError}`);
 }
 
-async function pruneChannel(releaseChannel) {
+async function markPublishedVersion(releaseChannel) {
   const prefix = prefixFor(releaseChannel);
-  const plan = releaseRetentionPlan(await listObjects(prefix), retainedVersionCount);
-  if (plan.incompleteVersions.length) {
-    console.warn(`Ignoring incomplete R2 version(s) in ${releaseChannel} retention: ${plan.incompleteVersions.join(', ')}`);
-  }
-  if (!plan.deleteObjects.length) {
-    console.log(`Retained ${plan.retainedVersions.length} R2 version(s) for ${releaseChannel}; nothing to prune.`);
-    return;
-  }
+  await Promise.all(artifactNames.map(name => client.send(new HeadObjectCommand({
+    Bucket: bucket,
+    Key: `${prefix}${name}`
+  }))));
+  const key = `${prefix}${releaseMarkerName(version)}`;
+  const body = Buffer.from(`${JSON.stringify({ version, artifacts: artifactNames, verifiedAt: new Date().toISOString() })}\n`);
+  await client.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentLength: body.length,
+    ContentType: 'application/json; charset=utf-8',
+    CacheControl: 'no-store, max-age=0'
+  }));
+  if (!(await remoteBody(key)).equals(body)) throw new Error(`Release marker verification failed for ${key}.`);
+  console.log(`Marked ${version} as publicly verified in ${releaseChannel}.`);
+}
 
-  await Promise.all(plan.deleteObjects.map(object => network(() => verifyGithubFallback(object))));
-  for (let index = 0; index < plan.deleteObjects.length; index += 1000) {
-    const batch = plan.deleteObjects.slice(index, index + 1000);
+async function deleteObjects(objects) {
+  const unique = [...new Map(objects.filter(Boolean).map(object => [object.Key, object])).values()];
+  for (let index = 0; index < unique.length; index += 1000) {
+    const batch = unique.slice(index, index + 1000);
     const result = await client.send(new DeleteObjectsCommand({
       Bucket: bucket,
       Delete: { Objects: batch.map(object => ({ Key: object.Key })), Quiet: true }
@@ -157,10 +168,67 @@ async function pruneChannel(releaseChannel) {
       throw new Error(`R2 failed to delete: ${result.Errors.map(error => `${error.Key}: ${error.Message}`).join(', ')}`);
     }
   }
-  console.log(`Retained ${plan.retainedVersions.join(', ')} in R2 for ${releaseChannel}; pruned ${plan.deletedVersions.join(', ')} after verifying GitHub fallbacks.`);
 }
 
-if (mode === 'cleanup') {
+async function pruneChannel(releaseChannel) {
+  const prefix = prefixFor(releaseChannel);
+  const plan = releaseRetentionPlan(await listObjects(prefix), retainedVersionCount);
+  if (plan.incompleteVersions.length) {
+    console.warn(`Removing incomplete marked R2 version(s) from ${releaseChannel}: ${plan.incompleteVersions.join(', ')}`);
+  }
+  const objectVersion = object => artifactVersion(object.Key) || releaseMarkerVersion(object.Key);
+  const verifiedRemoval = [];
+  const verificationErrors = [];
+  const markedObjects = [...plan.deleteObjects, ...plan.incompleteObjects];
+  for (const candidate of [...plan.deletedVersions, ...plan.incompleteVersions]) {
+    const objects = markedObjects.filter(object => objectVersion(object) === candidate);
+    try {
+      await Promise.all(objects
+        .filter(object => artifactVersion(object.Key))
+        .map(object => network(() => verifyGithubFallback(object))));
+      verifiedRemoval.push(...objects);
+    } catch (error) {
+      verificationErrors.push(new Error(`${candidate}: ${error.message}`));
+    }
+  }
+
+  const removableIncompleteVersions = new Set(plan.unmarkedIncompleteVersions.filter(candidate =>
+    compareReleaseVersions(candidate, version) <= 0));
+  const failedUploadObjects = plan.unmarkedIncompleteObjects.filter(object =>
+    removableIncompleteVersions.has(artifactVersion(object.Key)));
+  const archivedOrphanVersions = [];
+  for (const candidate of plan.unmarkedCompleteVersions.filter(value => compareReleaseVersions(value, version) <= 0)) {
+    const objects = plan.unmarkedCompleteObjects.filter(object => artifactVersion(object.Key) === candidate);
+    try {
+      await Promise.all(objects.map(object => network(() => verifyGithubFallback(object))));
+      verifiedRemoval.push(...objects);
+      archivedOrphanVersions.push(candidate);
+    } catch (error) {
+      console.warn(`Retaining unmarked complete R2 version ${candidate} in ${releaseChannel}: ${error.message}`);
+    }
+  }
+
+  const removal = [...verifiedRemoval, ...failedUploadObjects];
+  if (!removal.length) {
+    console.log(`Retained ${plan.retainedVersions.length} R2 version(s) for ${releaseChannel}; nothing to prune.`);
+  } else {
+    await deleteObjects(removal);
+    console.log(`Retained ${plan.retainedVersions.join(', ')} in R2 for ${releaseChannel}; pruned ${plan.deletedVersions.join(', ')} after verifying GitHub fallbacks.`);
+    if (removableIncompleteVersions.size) {
+      console.log(`Removed incomplete failed-upload version(s) from ${releaseChannel}: ${[...removableIncompleteVersions].join(', ')}`);
+    }
+    if (archivedOrphanVersions.length) {
+      console.log(`Removed archived unmarked version(s) from ${releaseChannel}: ${archivedOrphanVersions.join(', ')}`);
+    }
+  }
+  if (verificationErrors.length) {
+    throw new AggregateError(verificationErrors, `Could not verify every marked GitHub fallback in ${releaseChannel}.`);
+  }
+}
+
+if (mode === 'mark') {
+  for (const releaseChannel of channels) await markPublishedVersion(releaseChannel);
+} else if (mode === 'cleanup') {
   for (const releaseChannel of channels) await pruneChannel(releaseChannel);
 } else {
   const primary = channels[0];
