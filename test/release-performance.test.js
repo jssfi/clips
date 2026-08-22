@@ -19,17 +19,17 @@ test('release upload limiter enforces concurrency while completing every task', 
 });
 
 test('release retention keeps the newest three complete version groups', async () => {
-  const { artifactVersion, releaseRetentionPlan } = await import('../clips-worker/scripts/release-utils.mjs');
+  const { artifactVersion, releaseArtifactNames, releaseRetentionPlan } = await import('../clips-worker/scripts/release-utils.mjs');
   const versions = [
     '0.6.0-nightly.n000009.aaaaaaaa',
     '0.6.0-nightly.n000012.dddddddd',
     '0.6.0-nightly.n000010.bbbbbbbb',
     '0.6.0-nightly.n000011.cccccccc'
   ];
-  const objects = versions.flatMap(version => [
-    { Key: `releases/jss-clips-update-${version}-x64.exe`, Size: 100 },
-    { Key: `releases/jss-clips-source-${version}.zip`, Size: 50 }
-  ]);
+  const objects = versions.flatMap(version => releaseArtifactNames(version).map(name => ({
+    Key: `releases/${name}`,
+    Size: 100
+  })));
   objects.push({ Key: 'releases/latest.json', Size: 1 });
 
   assert.equal(artifactVersion('releases/stable/jss-clips-app-0.6.0-x64.zip'), '0.6.0');
@@ -37,19 +37,42 @@ test('release retention keeps the newest three complete version groups', async (
   assert.deepEqual(releaseRetentionPlan(objects), {
     retainedVersions: versions.slice(1).sort().reverse(),
     deletedVersions: [versions[0]],
-    deleteObjects: objects.slice(0, 2)
+    incompleteVersions: [],
+    deleteObjects: objects.slice(0, 4)
   });
 });
 
 test('release retention understands stable and legacy nightly version ordering', async () => {
-  const { compareReleaseVersions, releaseRetentionPlan } = await import('../clips-worker/scripts/release-utils.mjs');
+  const { compareReleaseVersions, releaseArtifactNames, releaseRetentionPlan } = await import('../clips-worker/scripts/release-utils.mjs');
   assert.ok(compareReleaseVersions('0.6.0', '0.6.0-nightly.n000099.aaaaaaaa') > 0);
   assert.ok(compareReleaseVersions('0.6.0-nightly.n000001.bbbbbbbb', '0.5.0-nightly.20.aaaaaaaa') > 0);
-  const objects = ['0.4.0', '0.5.0', '0.6.0', '0.7.0'].map(version => ({
-    Key: `releases/stable/jss-clips-setup-${version}-x64.exe`,
-    Size: 100
-  }));
+  assert.equal(compareReleaseVersions('0.5.0-nightly.19.aaaaaaaa', '0.5.0-nightly.n000019.aaaaaaaa'), 0);
+  assert.ok(compareReleaseVersions('0.5.0-nightly.n000019.bbbbbbbb', '0.5.0-nightly.18.aaaaaaaa') > 0);
+  assert.ok(compareReleaseVersions('0.5.0-nightly.20.cccccccc', '0.5.0-nightly.n000019.bbbbbbbb') > 0);
+  const objects = ['0.4.0', '0.5.0', '0.6.0', '0.7.0'].flatMap(version =>
+    releaseArtifactNames(version).map(name => ({ Key: `releases/stable/${name}`, Size: 100 })));
   assert.deepEqual(releaseRetentionPlan(objects).deletedVersions, ['0.4.0']);
+});
+
+test('incomplete uploads do not occupy complete release retention slots', async () => {
+  const { releaseArtifactNames, releaseRetentionPlan } = await import('../clips-worker/scripts/release-utils.mjs');
+  const completeVersions = [
+    '0.6.0-nightly.n000009.aaaaaaaa',
+    '0.6.0-nightly.n000010.bbbbbbbb',
+    '0.6.0-nightly.n000011.cccccccc'
+  ];
+  const incompleteVersion = '0.6.0-nightly.n000012.dddddddd';
+  const objects = completeVersions.flatMap(version => releaseArtifactNames(version).map(name => ({
+    Key: `releases/${name}`,
+    Size: 100
+  })));
+  objects.push({ Key: `releases/${releaseArtifactNames(incompleteVersion)[0]}`, Size: 100 });
+
+  const plan = releaseRetentionPlan(objects);
+  assert.deepEqual(plan.retainedVersions, completeVersions.slice().reverse());
+  assert.deepEqual(plan.deletedVersions, []);
+  assert.deepEqual(plan.incompleteVersions, [incompleteVersion]);
+  assert.deepEqual(plan.deleteObjects, []);
 });
 
 test('dual update metadata publication rolls back the first feed on partial failure', async () => {

@@ -6,7 +6,9 @@ import {
   CreateMultipartUploadCommand, DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand,
   HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client, UploadPartCommand
 } from '@aws-sdk/client-s3';
-import { artifactVersion, limiter, publishMetadataPair, releaseRetentionPlan } from './release-utils.mjs';
+import {
+  artifactVersion, limiter, publishMetadataPair, releaseArtifactNames, releaseRetentionPlan
+} from './release-utils.mjs';
 
 const [dist, bucket, channel, version, mode = 'publish'] = process.argv.slice(2);
 for (const name of ['CLIPS_R2_ACCOUNT_ID', 'CLIPS_R2_ACCESS_KEY_ID', 'CLIPS_R2_SECRET_ACCESS_KEY']) {
@@ -16,11 +18,7 @@ const client = new S3Client({
   region: 'auto', endpoint: `https://${process.env.CLIPS_R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: { accessKeyId: process.env.CLIPS_R2_ACCESS_KEY_ID, secretAccessKey: process.env.CLIPS_R2_SECRET_ACCESS_KEY }
 });
-const artifactNames = [
-  `jss-clips-update-${version}-x64.exe`, `jss-clips-update-${version}-x64.exe.blockmap`,
-  `jss-clips-app-${version}-x64.zip`, `jss-clips-source-${version}.zip`
-];
-if (!version.includes('-')) artifactNames.push(`jss-clips-setup-${version}-x64.exe`);
+const artifactNames = releaseArtifactNames(version);
 const channels = channel === 'both' ? ['nightly', 'stable'] : [channel];
 const prefixFor = value => value === 'stable' ? 'releases/stable/' : 'releases/';
 const types = { '.exe': 'application/octet-stream', '.blockmap': 'application/octet-stream', '.zip': 'application/zip', '.yml': 'text/yaml; charset=utf-8', '.json': 'application/json; charset=utf-8' };
@@ -140,6 +138,9 @@ async function verifyGithubFallback(object) {
 async function pruneChannel(releaseChannel) {
   const prefix = prefixFor(releaseChannel);
   const plan = releaseRetentionPlan(await listObjects(prefix), retainedVersionCount);
+  if (plan.incompleteVersions.length) {
+    console.warn(`Ignoring incomplete R2 version(s) in ${releaseChannel} retention: ${plan.incompleteVersions.join(', ')}`);
+  }
   if (!plan.deleteObjects.length) {
     console.log(`Retained ${plan.retainedVersions.length} R2 version(s) for ${releaseChannel}; nothing to prune.`);
     return;

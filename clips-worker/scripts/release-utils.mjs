@@ -22,12 +22,28 @@ function artifactVersion(key) {
   return VERSIONED_ARTIFACTS.map(pattern => pattern.exec(name)?.[1]).find(Boolean) || null;
 }
 
+function releaseArtifactNames(version) {
+  const names = [
+    `jss-clips-update-${version}-x64.exe`,
+    `jss-clips-update-${version}-x64.exe.blockmap`,
+    `jss-clips-app-${version}-x64.zip`,
+    `jss-clips-source-${version}.zip`
+  ];
+  if (!version.includes('-')) names.push(`jss-clips-setup-${version}-x64.exe`);
+  return names;
+}
+
 function parseReleaseVersion(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(version);
   if (!match) return null;
+  const prerelease = match[4]?.split('.') || [];
+  const sortableNightly = prerelease[0]?.toLowerCase() === 'nightly'
+    ? /^n(\d{6})$/i.exec(prerelease[1])
+    : null;
+  if (sortableNightly) prerelease[1] = String(Number(sortableNightly[1]));
   return {
     core: match.slice(1, 4).map(Number),
-    prerelease: match[4]?.split('.') || []
+    prerelease
   };
 }
 
@@ -58,20 +74,29 @@ function releaseRetentionPlan(objects, retainedVersionCount = 3) {
   if (!Number.isSafeInteger(retainedVersionCount) || retainedVersionCount < 1) {
     throw new Error('retainedVersionCount must be a positive integer.');
   }
-  const objectsByVersion = new Map();
+  const releases = new Map();
   for (const object of objects) {
     const version = artifactVersion(object.Key);
     if (!version) continue;
-    if (!objectsByVersion.has(version)) objectsByVersion.set(version, []);
-    objectsByVersion.get(version).push(object);
+    if (!releases.has(version)) releases.set(version, { names: new Set(), objects: [] });
+    const release = releases.get(version);
+    release.names.add(String(object.Key).split('/').at(-1));
+    release.objects.push(object);
   }
-  const versions = [...objectsByVersion.keys()].sort((a, b) => compareReleaseVersions(b, a));
+  const complete = [...releases.entries()].filter(([version, release]) =>
+    releaseArtifactNames(version).every(name => release.names.has(name)));
+  const versions = complete.map(([version]) => version).sort((a, b) => compareReleaseVersions(b, a));
+  const completeVersions = new Set(versions);
   const retainedVersions = versions.slice(0, retainedVersionCount);
   const deletedVersions = versions.slice(retainedVersionCount);
+  const incompleteVersions = [...releases.keys()]
+    .filter(version => !completeVersions.has(version))
+    .sort((a, b) => compareReleaseVersions(b, a));
   return {
     retainedVersions,
     deletedVersions,
-    deleteObjects: deletedVersions.flatMap(version => objectsByVersion.get(version))
+    incompleteVersions,
+    deleteObjects: deletedVersions.flatMap(version => releases.get(version).objects)
   };
 }
 
@@ -97,4 +122,4 @@ async function publishMetadataPair(names, operations) {
   }
 }
 
-export { artifactVersion, compareReleaseVersions, limiter, publishMetadataPair, releaseRetentionPlan };
+export { artifactVersion, compareReleaseVersions, limiter, publishMetadataPair, releaseArtifactNames, releaseRetentionPlan };
