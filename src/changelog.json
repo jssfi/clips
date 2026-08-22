@@ -1,6 +1,6 @@
 [
   {
-    "version": "next",
+    "version": "0.6-nightly.7",
     "title": "A softer landing for overlays",
     "changes": [
       "Overlay notifications now settle with a compact directional halftone wave that adapts to each notification, while stopping a recording pulls its red wave inward and fades it to gray."
